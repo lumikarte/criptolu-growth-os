@@ -1,0 +1,19 @@
+# Datos de episodios (media pesada) — no versionar
+data/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Modelos descargados
+*.bin
+*.pt
+
+# Secretos locales
+.env
+.tmp/
+
+# Legacy (plan cancelado) — reutilizable para FP-MVP-03/PP-MVP-01, no se versiona
+podcastpro/
