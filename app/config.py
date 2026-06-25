@@ -57,6 +57,19 @@ DEFAULT_LANGUAGE = "es"
 # (que achicaría episodios largos) llega con FFmpeg en una etapa posterior.
 GROQ_MAX_FILE_BYTES = 100 * 1024 ** 2
 
+# Detección de mejores momentos (PP-MVP-01). Motor enchufable: Groq (default, reusa la
+# key de transcripción) o Claude (requiere ANTHROPIC_API_KEY, mejor criterio editorial).
+DETECT_DEFAULT_ENGINE = "groq"
+DETECT_N_CLIPS = 5
+DETECT_MIN_SEC = 15
+DETECT_MAX_SEC = 60
+# Groq como LLM (chat completions, API compatible con OpenAI).
+GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_LLM_MODEL = "llama-3.3-70b-versatile"
+# Claude (API de Anthropic). Se usa el modelo más capaz por defecto.
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
+CLAUDE_MODEL = "claude-opus-4-8"
+
 
 def ensure_dirs() -> None:
     """Crea la estructura de carpetas de datos (idempotente). Se llama al arrancar."""
