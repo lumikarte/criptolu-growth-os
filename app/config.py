@@ -17,6 +17,17 @@ CLIPS_DIR = DATA_DIR / "clips"              # PP-MVP-02: clips cortados
 EXPORTS_DIR = DATA_DIR / "exports"          # PP-MVP-03: export por plataforma
 EXPORT_SUBDIRS = ("shorts", "reels", "tiktok")
 
+# Temporales en DISCO REAL. /tmp es un tmpfs (RAM) con cuota que se llena y rompe
+# escrituras (uploads grandes spoolean a tempfile). Forzamos tempdir acá.
+TMP_DIR = BASE_DIR / ".tmp"
+
+# Validación de subidas (FP-MVP-02, CRI-259)
+ALLOWED_UPLOAD_EXT = {
+    ".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac",   # audio
+    ".mp4", ".mov", ".mkv", ".webm",                    # video
+}
+MAX_UPLOAD_BYTES = 2 * 1024 ** 3  # 2 GB
+
 
 def ensure_dirs() -> None:
     """Crea la estructura de carpetas de datos (idempotente). Se llama al arrancar."""
