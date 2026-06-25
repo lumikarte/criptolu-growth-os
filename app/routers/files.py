@@ -1,15 +1,17 @@
-"""Endpoints de gestión de archivos (FP-MVP-02).
+"""Endpoints de gestión de archivos y transcripción (FP-MVP-02 / FP-MVP-03).
 
-POST /upload        subir un archivo (CRI-258)
-GET  /uploads       listar subidas
-GET  /uploads/{id}  metadata de una subida
+POST /upload                       subir un archivo (CRI-258)
+GET  /uploads                      listar subidas
+GET  /uploads/{id}                 metadata de una subida
+POST /uploads/{id}/transcribe      transcribir la subida (FP-MVP-03)
+GET  /uploads/{id}/transcript      obtener la transcripción
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from ..services import storage
+from ..services import storage, transcription
 
 router = APIRouter(tags=["files"])
 
@@ -36,3 +38,31 @@ def get_upload(upload_id: str) -> dict:
     if meta is None:
         raise HTTPException(status_code=404, detail=f"Subida '{upload_id}' no encontrada.")
     return meta
+
+
+@router.post("/uploads/{upload_id}/transcribe")
+def transcribe_upload(upload_id: str, language: str | None = None) -> dict:
+    """Transcribe la subida con Groq (whisper-large-v3) y guarda el resultado.
+
+    `language` opcional (ISO, p.ej. 'es'); por defecto usa el idioma configurado.
+    """
+    if storage.load_metadata(upload_id) is None:
+        raise HTTPException(status_code=404, detail=f"Subida '{upload_id}' no encontrada.")
+    try:
+        return transcription.transcribe_upload(upload_id, language=language)
+    except transcription.TranscriptionError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.get("/uploads/{upload_id}/transcript")
+def get_transcript(upload_id: str) -> dict:
+    """Devuelve la transcripción de una subida (transcript.json)."""
+    if storage.load_metadata(upload_id) is None:
+        raise HTTPException(status_code=404, detail=f"Subida '{upload_id}' no encontrada.")
+    transcript = transcription.load_transcript(upload_id)
+    if transcript is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"La subida '{upload_id}' todavía no fue transcrita.",
+        )
+    return transcript

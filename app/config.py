@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 APP_NAME = "Podcast Pro AI Studio"
@@ -9,6 +10,24 @@ APP_VERSION = "0.1.0"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
+
+
+def _load_dotenv() -> None:
+    """Carga editorpro/.env en os.environ (sin pisar variables ya seteadas).
+
+    Loader mínimo para no agregar dependencias; el .env real está gitignored.
+    """
+    envp = BASE_DIR / ".env"
+    if not envp.is_file():
+        return
+    for line in envp.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
+_load_dotenv()
 
 # Carpetas del pipeline (cada etapa escribe en la suya).
 UPLOADS_DIR = DATA_DIR / "uploads"          # FP-MVP-02: archivos subidos
@@ -27,6 +46,16 @@ ALLOWED_UPLOAD_EXT = {
     ".mp4", ".mov", ".mkv", ".webm",                    # video
 }
 MAX_UPLOAD_BYTES = 2 * 1024 ** 3  # 2 GB
+
+# Transcripción (FP-MVP-03). Motor activo: Groq (whisper-large-v3).
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_API_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
+GROQ_MODEL = "whisper-large-v3"
+DEFAULT_LANGUAGE = "es"
+# Límite de tamaño de archivo de la API de Groq (~100 MB en tier dev). Avisamos antes
+# de subir para dar un error claro en vez de un 413 críptico. El downsample a 16 kHz
+# (que achicaría episodios largos) llega con FFmpeg en una etapa posterior.
+GROQ_MAX_FILE_BYTES = 100 * 1024 ** 2
 
 
 def ensure_dirs() -> None:

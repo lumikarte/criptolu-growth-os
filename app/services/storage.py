@@ -94,6 +94,19 @@ def load_metadata(upload_id: str) -> dict | None:
     return json.loads(meta_file.read_text(encoding="utf-8"))
 
 
+def update_metadata(upload_id: str, patch: dict) -> dict | None:
+    """Mezcla `patch` en el meta.json de una subida y lo persiste. None si no existe."""
+    meta = load_metadata(upload_id)
+    if meta is None:
+        return None
+    meta.update(patch)
+    meta_file = config.UPLOADS_DIR / upload_id / "meta.json"
+    meta_file.write_text(
+        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return meta
+
+
 def list_uploads() -> list[dict]:
     """Lista la metadata de todas las subidas, más recientes primero."""
     if not config.UPLOADS_DIR.is_dir():
