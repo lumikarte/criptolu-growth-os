@@ -52,6 +52,8 @@ def transcribe_upload(upload_id: str, language: str | None = None) -> dict:
         raise HTTPException(status_code=404, detail=f"Subida '{upload_id}' no encontrada.")
     try:
         return transcription.transcribe_upload(upload_id, language=language)
+    except transcription.UpstreamError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
     except transcription.TranscriptionError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
@@ -83,6 +85,8 @@ def detect_moments(
         raise HTTPException(status_code=404, detail=f"Subida '{upload_id}' no encontrada.")
     try:
         return detection.detect_moments(upload_id, engine=engine, n_clips=n_clips)
+    except detection.UpstreamError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
     except detection.DetectError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 

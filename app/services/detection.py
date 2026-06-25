@@ -72,7 +72,11 @@ CLIPS_SCHEMA = {
 
 
 class DetectError(RuntimeError):
-    """Falla al detectar momentos (se traduce a HTTP 400 en el router)."""
+    """Falla de validación al detectar momentos (se traduce a HTTP 400 en el router)."""
+
+
+class UpstreamError(DetectError):
+    """Falla de la dependencia externa (LLM caído, red, key/SDK faltante) → HTTP 502."""
 
 
 def _format_segments(transcript: dict) -> str:
@@ -103,7 +107,7 @@ def build_prompt(transcript: dict, *, n_clips: int, min_sec: int, max_sec: int) 
 def _engine_groq(prompt: str) -> list[dict]:
     """Detecta con Llama 3.3 70B vía Groq (chat completions, JSON mode). Sin deps extra."""
     if not config.GROQ_API_KEY:
-        raise DetectError("Falta GROQ_API_KEY. Ponela en editorpro/.env (GROQ_API_KEY=gsk_...).")
+        raise UpstreamError("Falta GROQ_API_KEY. Ponela en editorpro/.env (GROQ_API_KEY=gsk_...).")
 
     payload = json.dumps({
         "model": config.GROQ_LLM_MODEL,
@@ -127,9 +131,9 @@ def _engine_groq(prompt: str) -> list[dict]:
         with urllib.request.urlopen(req, timeout=120) as r:
             data = json.loads(r.read())
     except urllib.error.HTTPError as e:
-        raise DetectError(f"Groq HTTP {e.code}: {e.read().decode()[:300]}") from e
+        raise UpstreamError(f"Groq HTTP {e.code}: {e.read().decode()[:300]}") from e
     except urllib.error.URLError as e:
-        raise DetectError(f"Red al contactar Groq: {e}") from e
+        raise UpstreamError(f"Red al contactar Groq: {e}") from e
 
     content = data["choices"][0]["message"]["content"]
     return json.loads(content).get("clips", [])
@@ -138,26 +142,29 @@ def _engine_groq(prompt: str) -> list[dict]:
 def _engine_claude(prompt: str) -> list[dict]:
     """Detecta con Claude (API de Anthropic) usando structured outputs. SDK perezoso."""
     if not config.ANTHROPIC_API_KEY:
-        raise DetectError(
+        raise UpstreamError(
             "Falta ANTHROPIC_API_KEY. Ponela en editorpro/.env para usar el motor 'claude'."
         )
     try:
         import anthropic
     except ImportError as e:
-        raise DetectError(
+        raise UpstreamError(
             "Motor 'claude' no disponible: falta el SDK. Instalá con 'pip install anthropic' "
             "(o usá el motor 'groq', que ya corre)."
         ) from e
 
     client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
-    response = client.messages.create(
-        model=config.CLAUDE_MODEL,
-        max_tokens=8192,
-        thinking={"type": "adaptive"},
-        system=SYSTEM_PROMPT,
-        output_config={"format": {"type": "json_schema", "schema": CLIPS_SCHEMA}},
-        messages=[{"role": "user", "content": prompt}],
-    )
+    try:
+        response = client.messages.create(
+            model=config.CLAUDE_MODEL,
+            max_tokens=8192,
+            thinking={"type": "adaptive"},
+            system=SYSTEM_PROMPT,
+            output_config={"format": {"type": "json_schema", "schema": CLIPS_SCHEMA}},
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except anthropic.APIError as e:
+        raise UpstreamError(f"Error de la API de Anthropic: {e}") from e
     if response.stop_reason == "refusal":
         raise DetectError("Claude rechazó la petición por seguridad.")
     text = next((b.text for b in response.content if b.type == "text"), "")
@@ -231,7 +238,7 @@ def detect_moments(
     )
     raw = ENGINES[eng](prompt)
     duration = max((s["end"] for s in segments), default=0.0)
-    clips = _validate_clips(raw, duration)
+    clips = _validate_clips(raw, duration)[:n]  # acotar a lo pedido por si el LLM se pasa
 
     model = config.GROQ_LLM_MODEL if eng == "groq" else config.CLAUDE_MODEL
     payload = {
@@ -245,7 +252,7 @@ def detect_moments(
     out_dir = config.CLIPS_DIR / upload_id
     out_dir.mkdir(parents=True, exist_ok=True)
     out_file = out_dir / "moments.json"
-    out_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    storage.atomic_write_text(out_file, json.dumps(payload, ensure_ascii=False, indent=2))
 
     storage.update_metadata(upload_id, {
         "status": "moments",
@@ -255,7 +262,9 @@ def detect_moments(
 
 
 def load_moments(upload_id: str) -> dict | None:
-    """Devuelve moments.json de una subida, o None si todavía no se detectaron momentos."""
+    """Devuelve moments.json de una subida, o None si no existe (o el id es inválido)."""
+    if not storage.valid_upload_id(upload_id):
+        return None
     out_file = config.CLIPS_DIR / upload_id / "moments.json"
     if not out_file.is_file():
         return None

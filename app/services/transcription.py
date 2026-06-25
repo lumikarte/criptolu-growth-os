@@ -38,7 +38,11 @@ _CONTENT_TYPES = {
 
 
 class TranscriptionError(RuntimeError):
-    """Falla al transcribir (se traduce a HTTP 400/502 en el router)."""
+    """Falla de validación al transcribir (se traduce a HTTP 400 en el router)."""
+
+
+class UpstreamError(TranscriptionError):
+    """Falla de la dependencia externa (Groq caído, red, key faltante) → HTTP 502."""
 
 
 def _fmt_ts(seconds: float) -> str:
@@ -84,7 +88,7 @@ def _multipart(
 def _engine_groq(path: Path, *, model: str, language: str | None) -> list[dict]:
     """Transcribe un archivo con la API de Groq y devuelve segmentos con word-timestamps."""
     if not config.GROQ_API_KEY:
-        raise TranscriptionError(
+        raise UpstreamError(
             "Falta GROQ_API_KEY. Ponela en editorpro/.env (GROQ_API_KEY=gsk_...)."
         )
 
@@ -114,9 +118,9 @@ def _engine_groq(path: Path, *, model: str, language: str | None) -> list[dict]:
         with urllib.request.urlopen(req, timeout=300) as r:
             data = json.loads(r.read())
     except urllib.error.HTTPError as e:
-        raise TranscriptionError(f"Groq HTTP {e.code}: {e.read().decode()[:300]}") from e
+        raise UpstreamError(f"Groq HTTP {e.code}: {e.read().decode()[:300]}") from e
     except urllib.error.URLError as e:
-        raise TranscriptionError(f"Red al contactar Groq: {e}") from e
+        raise UpstreamError(f"Red al contactar Groq: {e}") from e
 
     all_words = data.get("words") or []
     segments: list[dict] = []
@@ -187,10 +191,10 @@ def transcribe_upload(
     out_dir.mkdir(parents=True, exist_ok=True)
     json_path = out_dir / "transcript.json"
     srt_path = out_dir / "transcript.srt"
-    json_path.write_text(
-        json.dumps(transcript, ensure_ascii=False, indent=2), encoding="utf-8"
+    storage.atomic_write_text(
+        json_path, json.dumps(transcript, ensure_ascii=False, indent=2)
     )
-    srt_path.write_text(to_srt(segments), encoding="utf-8")
+    storage.atomic_write_text(srt_path, to_srt(segments))
 
     storage.update_metadata(upload_id, {
         "status": "transcribed",
@@ -213,7 +217,9 @@ def transcribe_upload(
 
 
 def load_transcript(upload_id: str) -> dict | None:
-    """Devuelve el transcript.json de una subida, o None si todavía no se transcribió."""
+    """Devuelve el transcript.json de una subida, o None si no existe (o el id es inválido)."""
+    if not storage.valid_upload_id(upload_id):
+        return None
     json_path = config.TRANSCRIPTS_DIR / upload_id / "transcript.json"
     if not json_path.is_file():
         return None

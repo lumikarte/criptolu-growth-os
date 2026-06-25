@@ -7,6 +7,8 @@ Cada subida vive en data/uploads/<id>/ con el archivo `source.<ext>` y `meta.jso
 from __future__ import annotations
 
 import json
+import os
+import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,9 +20,25 @@ from .. import config
 
 _CHUNK = 1024 * 1024  # 1 MB
 
+# Un upload_id válido es el hex de un uuid4 (32 chars). Validar antes de usarlo para
+# construir rutas evita path traversal: el id viene crudo desde la URL.
+_UPLOAD_ID_RE = re.compile(r"\A[0-9a-f]{32}\Z")
+
 
 class UploadError(ValueError):
     """Error de validación de una subida (se traduce a HTTP 400)."""
+
+
+def valid_upload_id(upload_id: str) -> bool:
+    """True si `upload_id` tiene el formato esperado (hex de uuid4). Anti path traversal."""
+    return bool(_UPLOAD_ID_RE.match(upload_id or ""))
+
+
+def atomic_write_text(path: Path, text: str) -> None:
+    """Escribe `text` en `path` de forma atómica (tmp + rename) para no dejar JSON a medias."""
+    tmp = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def _ext(filename: str) -> str:
@@ -80,14 +98,16 @@ async def save_upload(file: UploadFile) -> dict:
         "uploaded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "status": "uploaded",
     }
-    (dest_dir / "meta.json").write_text(
-        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
+    atomic_write_text(
+        dest_dir / "meta.json", json.dumps(meta, ensure_ascii=False, indent=2)
     )
     return meta
 
 
 def load_metadata(upload_id: str) -> dict | None:
-    """Devuelve la metadata de una subida, o None si no existe."""
+    """Devuelve la metadata de una subida, o None si no existe (o el id es inválido)."""
+    if not valid_upload_id(upload_id):
+        return None
     meta_file = config.UPLOADS_DIR / upload_id / "meta.json"
     if not meta_file.is_file():
         return None
@@ -100,9 +120,9 @@ def update_metadata(upload_id: str, patch: dict) -> dict | None:
     if meta is None:
         return None
     meta.update(patch)
-    meta_file = config.UPLOADS_DIR / upload_id / "meta.json"
-    meta_file.write_text(
-        json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
+    atomic_write_text(
+        config.UPLOADS_DIR / upload_id / "meta.json",
+        json.dumps(meta, ensure_ascii=False, indent=2),
     )
     return meta
 
