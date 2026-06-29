@@ -57,6 +57,15 @@ DEFAULT_LANGUAGE = "es"
 # (que achicaría episodios largos) llega con FFmpeg en una etapa posterior.
 GROQ_MAX_FILE_BYTES = 100 * 1024 ** 2
 
+# Clips (PP-MVP-02). FFmpeg corta cada momento en un video vertical 9:16 listo para
+# Reels/TikTok/Shorts. Si el source tiene video se recorta a 9:16; si es solo-audio se
+# genera un waveform sobre fondo para que el clip siga siendo postable (video).
+CLIP_WIDTH = 1080
+CLIP_HEIGHT = 1920
+CLIP_PRESET = "veryfast"                 # x264: balance velocidad/calidad para MVP
+CLIP_WAVE_COLOR = "0xC026D3"             # magenta CriptoLú para el waveform de audios
+CLIP_BG_COLOR = "0x1A0033"               # morado profundo de fondo del waveform
+
 # Detección de mejores momentos (PP-MVP-01). Motor enchufable: Groq (default, reusa la
 # key de transcripción) o Claude (requiere ANTHROPIC_API_KEY, mejor criterio editorial).
 DETECT_DEFAULT_ENGINE = "groq"

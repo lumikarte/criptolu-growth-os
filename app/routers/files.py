@@ -7,13 +7,15 @@ POST /uploads/{id}/transcribe      transcribir la subida (FP-MVP-03)
 GET  /uploads/{id}/transcript      obtener la transcripción
 POST /uploads/{id}/detect          detectar mejores momentos (PP-MVP-01)
 GET  /uploads/{id}/moments         obtener los momentos detectados
+POST /uploads/{id}/clips           cortar los clips verticales con FFmpeg (PP-MVP-02)
+GET  /uploads/{id}/clips           obtener el índice de clips cortados
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from ..services import detection, storage, transcription
+from ..services import clipping, detection, storage, transcription
 
 router = APIRouter(tags=["files"])
 
@@ -103,3 +105,30 @@ def get_moments(upload_id: str) -> dict:
             detail=f"La subida '{upload_id}' todavía no tiene momentos detectados.",
         )
     return moments
+
+
+@router.post("/uploads/{upload_id}/clips")
+def cut_clips(upload_id: str) -> dict:
+    """Corta los momentos detectados en clips verticales 9:16 con FFmpeg (PP-MVP-02)."""
+    if storage.load_metadata(upload_id) is None:
+        raise HTTPException(status_code=404, detail=f"Subida '{upload_id}' no encontrada.")
+    try:
+        return clipping.cut_clips(upload_id)
+    except clipping.UpstreamError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except clipping.ClipError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.get("/uploads/{upload_id}/clips")
+def get_clips(upload_id: str) -> dict:
+    """Devuelve el índice de clips cortados (clips.json) de una subida."""
+    if storage.load_metadata(upload_id) is None:
+        raise HTTPException(status_code=404, detail=f"Subida '{upload_id}' no encontrada.")
+    clips = clipping.load_clips(upload_id)
+    if clips is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"La subida '{upload_id}' todavía no tiene clips cortados.",
+        )
+    return clips

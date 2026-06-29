@@ -13,7 +13,7 @@ Stack: **FastAPI** (Python). Proyecto en Linear: *CriptoLú Growth OS* → épic
 | **FP-MVP-02** Archivos | Subida y registro de archivos ✅ |
 | **FP-MVP-03** Whisper | Transcripción con timestamps (Groq) ✅ |
 | **PP-MVP-01** Detección | LLM elige los mejores momentos (Groq / Claude) ✅ |
-| PP-MVP-02 Clips | FFmpeg corta los segmentos |
+| **PP-MVP-02** Clips | FFmpeg corta los segmentos en vertical 9:16 ✅ |
 | PP-MVP-03 Export | Carpetas shorts/reels/tiktok + naming |
 
 ## Correr en local
@@ -40,6 +40,8 @@ uvicorn app.main:app --reload
 | GET | `/uploads/{id}/transcript` | Devuelve la transcripción (json) |
 | POST | `/uploads/{id}/detect` | Detecta mejores momentos (`?engine=groq\|claude&n_clips=5`) |
 | GET | `/uploads/{id}/moments` | Devuelve los momentos detectados (json) |
+| POST | `/uploads/{id}/clips` | Corta los momentos en clips verticales 9:16 con FFmpeg |
+| GET | `/uploads/{id}/clips` | Devuelve el índice de clips cortados (json) |
 
 > La transcripción usa **Groq** (whisper-large-v3). Requiere `GROQ_API_KEY` en `.env`
 > (ver `.env.example`). Límite de archivo de la API: ~100 MB.
@@ -47,6 +49,18 @@ uvicorn app.main:app --reload
 > La detección de momentos es **enchufable**: `groq` (Llama 3.3 70B, por defecto, reusa
 > `GROQ_API_KEY`) o `claude` (Anthropic, mejor criterio editorial, requiere
 > `ANTHROPIC_API_KEY`). El SDK `anthropic` se importa de forma perezosa.
+>
+> El corte de clips (PP-MVP-02) usa **FFmpeg/ffprobe** (binarios del sistema). Si el
+> source tiene video se recorta a 1080×1920; si es solo-audio se genera un waveform sobre
+> fondo de marca para que el clip siga siendo un video posteable. Salida en
+> `data/clips/<id>/clip_<n>.mp4` + `clips.json`.
+
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest            # FFmpeg se mockea: no se ejecuta nada real
+```
 
 ## Estructura
 
@@ -56,6 +70,13 @@ app/
   config.py          # metadata + rutas de datos
   routers/
     health.py        # / y /health
+    files.py         # upload/transcribe/detect/clips
+  services/
+    storage.py       # subidas + metadata
+    transcription.py # Groq whisper-large-v3
+    detection.py     # mejores momentos (Groq/Claude)
+    clipping.py      # corte 9:16 con FFmpeg
+tests/               # suite pytest (ffmpeg mockeado)
 data/                # gitignored
   uploads/  transcripts/  clips/
   exports/{shorts,reels,tiktok}/
