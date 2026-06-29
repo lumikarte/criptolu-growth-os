@@ -32,18 +32,23 @@ class UpstreamError(ClipError):
     """Falla de la herramienta externa (ffmpeg/ffprobe ausente o que falla) → HTTP 502."""
 
 
-def _run(cmd: list[str]) -> str:
+def _run(cmd: list[str], *, timeout: int) -> str:
     """Ejecuta un comando y devuelve stdout; aborta con mensaje claro si falla.
 
-    Distingue 'no está instalado' de 'corrió y falló' para dar un 502 entendible en vez
-    de un 500 críptico (igual criterio que el resto del pipeline).
+    Distingue 'no está instalado', 'colgado' (timeout) y 'corrió y falló' para dar un 502
+    entendible en vez de un 500 críptico (mismo criterio que transcription._run).
+    ``subprocess.TimeoutExpired`` no es subclase de CalledProcessError → handler propio.
     """
     try:
-        out = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        out = subprocess.run(
+            cmd, capture_output=True, text=True, check=True, timeout=timeout
+        )
     except FileNotFoundError as e:
         raise UpstreamError(
             f"No se encontró '{cmd[0]}'. ¿Está instalado ffmpeg? (apt install ffmpeg)"
         ) from e
+    except subprocess.TimeoutExpired as e:
+        raise UpstreamError(f"'{cmd[0]}' excedió el tiempo límite ({timeout}s).") from e
     except subprocess.CalledProcessError as e:
         raise UpstreamError(f"Falló {cmd[0]}: {(e.stderr or '').strip()[:400]}") from e
     return out.stdout
@@ -54,7 +59,7 @@ def probe_streams(src: Path) -> dict:
     raw = _run([
         "ffprobe", "-v", "error", "-print_format", "json",
         "-show_format", "-show_streams", str(src),
-    ])
+    ], timeout=config.FFPROBE_TIMEOUT)
     data = json.loads(raw)
     streams = data.get("streams", [])
     duration = float(data.get("format", {}).get("duration", 0.0) or 0.0)
@@ -163,7 +168,7 @@ def cut_clips(upload_id: str) -> dict:
         if dur <= 0:
             continue  # momento fuera de rango del archivo: se omite
         out = out_dir / f"clip_{cid}.mp4"
-        _run(build(src, start, dur, out))
+        _run(build(src, start, dur, out), timeout=config.FFMPEG_TIMEOUT)
         rendered.append({
             "id": cid,
             "filename": out.name,

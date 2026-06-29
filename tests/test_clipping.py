@@ -7,6 +7,7 @@ video/waveform, clamping de duración, índice escrito, manejo de errores y ruta
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -22,7 +23,7 @@ def fake_ffmpeg(monkeypatch):
     """Reemplaza clipping._run: 'crea' el archivo de salida y registra los comandos."""
     calls: list[list[str]] = []
 
-    def _fake(cmd: list[str]) -> str:
+    def _fake(cmd: list[str], *, timeout=None) -> str:
         calls.append(cmd)
         if cmd[0] == "ffmpeg":
             Path(cmd[-1]).write_bytes(b"fake-clip")  # el último arg es el out path
@@ -135,7 +136,17 @@ def test_cut_clips_no_usable_stream_raises(iso, monkeypatch, fake_ffmpeg):
 def test_run_raises_upstream_when_ffmpeg_missing(iso):
     # _run real contra un binario inexistente debe dar UpstreamError (no un crash).
     with pytest.raises(clipping.UpstreamError, match="No se encontró"):
-        clipping._run(["definitely-not-a-real-binary-xyz", "-version"])
+        clipping._run(["definitely-not-a-real-binary-xyz", "-version"], timeout=5)
+
+
+def test_run_timeout_maps_upstream(monkeypatch):
+    # Un ffmpeg colgado (TimeoutExpired) debe dar UpstreamError 502, no colgar el worker.
+    def boom(*a, **k):
+        raise subprocess.TimeoutExpired(cmd="ffmpeg", timeout=1)
+
+    monkeypatch.setattr(clipping.subprocess, "run", boom)
+    with pytest.raises(clipping.UpstreamError, match="tiempo límite"):
+        clipping._run(["ffmpeg", "-i", "x"], timeout=1)
 
 
 def test_load_clips_invalid_id_returns_none(iso):
