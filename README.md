@@ -46,7 +46,10 @@ uvicorn app.main:app --reload
 | GET | `/uploads/{id}/export` | Devuelve el índice de exports (json) |
 
 > La transcripción usa **Groq** (whisper-large-v3). Requiere `GROQ_API_KEY` en `.env`
-> (ver `.env.example`). Límite de archivo de la API: ~100 MB.
+> (ver `.env.example`). Antes de subir, **FFmpeg downsamplea el audio a 16 kHz mono Opus**
+> (~11 MB/h) para que un podcast largo entre en el tope de ~100 MB de la API (el source
+> de hasta 2 GB se acepta; lo que viaja es el `.ogg` chico). Si el archivo no tiene pista
+> de audio, devuelve 400.
 >
 > La detección de momentos es **enchufable**: `groq` (Llama 3.3 70B, por defecto, reusa
 > `GROQ_API_KEY`) o `claude` (Anthropic, mejor criterio editorial, requiere

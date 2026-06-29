@@ -13,6 +13,7 @@ devuelva la misma estructura de segmentos sin tocar el resto del pipeline.
 from __future__ import annotations
 
 import json
+import subprocess
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -43,6 +44,54 @@ class TranscriptionError(RuntimeError):
 
 class UpstreamError(TranscriptionError):
     """Falla de la dependencia externa (Groq caído, red, key faltante) → HTTP 502."""
+
+
+def _run(cmd: list[str], *, timeout: int) -> str:
+    """Ejecuta ffmpeg/ffprobe y devuelve stdout; mapea fallas a UpstreamError (502).
+
+    Distingue binario ausente, timeout (cuelgue) y fallo de ejecución, para no terminar en
+    un 500 críptico. ``subprocess.TimeoutExpired`` no es subclase de CalledProcessError, así
+    que necesita su propio handler.
+    """
+    try:
+        out = subprocess.run(
+            cmd, capture_output=True, text=True, check=True, timeout=timeout
+        )
+    except FileNotFoundError as e:
+        raise UpstreamError(
+            f"No se encontró '{cmd[0]}'. ¿Está instalado ffmpeg? (apt install ffmpeg)"
+        ) from e
+    except subprocess.TimeoutExpired as e:
+        raise UpstreamError(f"'{cmd[0]}' excedió el tiempo límite ({timeout}s).") from e
+    except subprocess.CalledProcessError as e:
+        raise UpstreamError(f"Falló {cmd[0]}: {(e.stderr or '').strip()[:400]}") from e
+    return out.stdout
+
+
+def _has_audio_stream(src: Path) -> bool:
+    """True si el archivo tiene al menos una pista de audio (ffprobe)."""
+    raw = _run(
+        [
+            "ffprobe", "-v", "error", "-select_streams", "a",
+            "-show_entries", "stream=codec_type", "-of", "csv=p=0", str(src),
+        ],
+        timeout=config.FFPROBE_TIMEOUT,
+    )
+    return "audio" in raw
+
+
+def _downsample_16k(src: Path, dst: Path) -> None:
+    """Extrae el audio a 16 kHz mono comprimido (Opus) — el insumo que sube a Groq."""
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    _run(
+        [
+            "ffmpeg", "-y", "-i", str(src),
+            "-vn", "-ac", "1", "-ar", str(config.AUDIO_DOWNSAMPLE_RATE),
+            "-c:a", config.AUDIO_DOWNSAMPLE_CODEC, "-b:a", config.AUDIO_DOWNSAMPLE_BITRATE,
+            str(dst),
+        ],
+        timeout=config.FFMPEG_TIMEOUT,
+    )
 
 
 def _fmt_ts(seconds: float) -> str:
@@ -163,20 +212,36 @@ def transcribe_upload(
     if not src.is_file():
         raise TranscriptionError(f"Falta el archivo de la subida '{upload_id}': {src}")
 
-    if meta.get("size_bytes", src.stat().st_size) > config.GROQ_MAX_FILE_BYTES:
-        raise TranscriptionError(
-            f"Archivo demasiado grande para transcribir: supera el máximo de "
-            f"{config.GROQ_MAX_FILE_BYTES // (1024 ** 2)} MB de la API de Groq."
-        )
-
     if engine not in ENGINES:
         raise TranscriptionError(
             f"Motor desconocido '{engine}'. Disponibles: {', '.join(ENGINES)}"
         )
 
+    if not _has_audio_stream(src):
+        raise TranscriptionError(
+            f"La subida '{upload_id}' no tiene pista de audio; no se puede transcribir."
+        )
+
     lang = language if language is not None else config.DEFAULT_LANGUAGE
     model = config.GROQ_MODEL
-    segments = ENGINES[engine](src, model=model, language=lang)
+
+    # Downsample a 16 kHz mono comprimido antes de subir: así un episodio largo entra en el
+    # tope de Groq (el source de hasta 2 GB se acepta; lo que viaja es el .ogg chico). El
+    # límite se reevalúa sobre el artefacto comprimido. Temp único en TMP_DIR, limpiado sí o sí.
+    audio16k = config.TMP_DIR / f"audio16k_{uuid4().hex}{config.AUDIO_DOWNSAMPLE_EXT}"
+    try:
+        _downsample_16k(src, audio16k)
+        size = audio16k.stat().st_size
+        if size > config.GROQ_MAX_FILE_BYTES:
+            raise TranscriptionError(
+                f"El audio sigue demasiado grande tras el downsample "
+                f"({size // (1024 ** 2)} MB): supera el máximo de "
+                f"{config.GROQ_MAX_FILE_BYTES // (1024 ** 2)} MB de la API de Groq."
+            )
+        segments = ENGINES[engine](audio16k, model=model, language=lang)
+    finally:
+        audio16k.unlink(missing_ok=True)
+
     full_text = " ".join(s["text"] for s in segments).strip()
 
     transcript = {

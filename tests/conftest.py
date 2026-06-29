@@ -22,11 +22,11 @@ VALID_ID = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
 @pytest.fixture
 def iso(tmp_path, monkeypatch):
     """Redirige UPLOADS/TRANSCRIPTS/CLIPS/EXPORTS_DIR a un tmp aislado por test."""
-    up, tr, cl, ex = (
+    up, tr, cl, ex, tmp = (
         tmp_path / "uploads", tmp_path / "transcripts",
-        tmp_path / "clips", tmp_path / "exports",
+        tmp_path / "clips", tmp_path / "exports", tmp_path / ".tmp",
     )
-    for d in (up, tr, cl, ex):
+    for d in (up, tr, cl, ex, tmp):
         d.mkdir()
     for sub in config.EXPORT_SUBDIRS:
         (ex / sub).mkdir()
@@ -34,6 +34,7 @@ def iso(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "TRANSCRIPTS_DIR", tr)
     monkeypatch.setattr(config, "CLIPS_DIR", cl)
     monkeypatch.setattr(config, "EXPORTS_DIR", ex)
+    monkeypatch.setattr(config, "TMP_DIR", tmp)
     return tmp_path
 
 

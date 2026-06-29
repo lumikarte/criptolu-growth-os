@@ -57,6 +57,17 @@ DEFAULT_LANGUAGE = "es"
 # (que achicaría episodios largos) llega con FFmpeg en una etapa posterior.
 GROQ_MAX_FILE_BYTES = 100 * 1024 ** 2
 
+# Downsample previo a transcribir (FP-MVP-03b, CRI-496). FFmpeg extrae el audio a 16 kHz
+# mono COMPRIMIDO antes de subirlo a Groq, para que un podcast largo entre en el tope y
+# suba rápido. PCM no sirve (1 h ≈ 110 MB > tope); Opus 24 kbps ≈ 11 MB/h y la calidad ASR
+# para voz es indistinguible. El temporal vive en TMP_DIR (disco real).
+AUDIO_DOWNSAMPLE_RATE = 16000          # Hz, lo que espera Whisper
+AUDIO_DOWNSAMPLE_CODEC = "libopus"     # comprimido; PCM no baja del límite de 100 MB
+AUDIO_DOWNSAMPLE_BITRATE = "24k"       # ~11 MB/h, voz nítida para ASR
+AUDIO_DOWNSAMPLE_EXT = ".ogg"          # contenedor Opus que Whisper acepta
+FFMPEG_TIMEOUT = 900                   # s; downsamplear un episodio largo puede tardar
+FFPROBE_TIMEOUT = 30                   # s; solo lee metadatos
+
 # Clips (PP-MVP-02). FFmpeg corta cada momento en un video vertical 9:16 listo para
 # Reels/TikTok/Shorts. Si el source tiene video se recorta a 9:16; si es solo-audio se
 # genera un waveform sobre fondo para que el clip siga siendo postable (video).
