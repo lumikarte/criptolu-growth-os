@@ -110,12 +110,16 @@ def get_moments(upload_id: str) -> dict:
 
 
 @router.post("/uploads/{upload_id}/clips")
-def cut_clips(upload_id: str) -> dict:
-    """Corta los momentos detectados en clips verticales 9:16 con FFmpeg (PP-MVP-02)."""
+def cut_clips(upload_id: str, subtitles: bool | None = None) -> dict:
+    """Corta los momentos detectados en clips verticales 9:16 con FFmpeg (PP-MVP-02/04).
+
+    `subtitles` opcional: si se omite, se queman captions cuando hay transcripción (si no,
+    se omiten); `true` los exige (400 si falta transcripción); `false` los desactiva.
+    """
     if storage.load_metadata(upload_id) is None:
         raise HTTPException(status_code=404, detail=f"Subida '{upload_id}' no encontrada.")
     try:
-        return clipping.cut_clips(upload_id)
+        return clipping.cut_clips(upload_id, subtitles=subtitles)
     except clipping.UpstreamError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
     except clipping.ClipError as e:

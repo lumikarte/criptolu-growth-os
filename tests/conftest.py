@@ -71,6 +71,24 @@ def make_moments(*, upload_id: str = VALID_ID, clips: list[dict] | None = None) 
     storage.atomic_write_text(out_dir / "moments.json", json.dumps(payload))
 
 
+def make_transcript(*, upload_id: str = VALID_ID, segments: list[dict] | None = None) -> None:
+    """Escribe data/transcripts/<id>/transcript.json (insumo de los subtítulos)."""
+    if segments is None:
+        segments = [{
+            "id": 0, "start": 6.0, "end": 9.0, "text": "hola mundo esto es",
+            "words": [
+                {"start": 6.0, "end": 6.4, "word": "hola"},
+                {"start": 6.4, "end": 6.9, "word": " mundo"},
+                {"start": 7.5, "end": 8.0, "word": " esto"},
+                {"start": 8.0, "end": 8.4, "word": " es"},
+            ],
+        }]
+    out_dir = config.TRANSCRIPTS_DIR / upload_id
+    out_dir.mkdir(parents=True, exist_ok=True)
+    payload = {"upload_id": upload_id, "language": "es", "segments": segments, "text": "x"}
+    storage.atomic_write_text(out_dir / "transcript.json", json.dumps(payload))
+
+
 def make_clips(*, upload_id: str = VALID_ID, clips: list[dict] | None = None) -> None:
     """Crea data/clips/<id>/clip_N.mp4 falsos + clips.json (insumo de export)."""
     if clips is None:

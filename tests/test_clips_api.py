@@ -33,7 +33,7 @@ def test_post_clips_happy_path(iso, client, monkeypatch):
     make_upload()
     monkeypatch.setattr(
         clipping, "cut_clips",
-        lambda uid: {"upload_id": uid, "mode": "video", "n_clips": 2, "clips": []},
+        lambda uid, **kw: {"upload_id": uid, "mode": "video", "n_clips": 2, "clips": []},
     )
     r = client.post(f"/uploads/{VALID_ID}/clips")
     assert r.status_code == 200
@@ -43,7 +43,7 @@ def test_post_clips_happy_path(iso, client, monkeypatch):
 def test_post_clips_upstream_error_maps_502(iso, client, monkeypatch):
     make_upload()
 
-    def _boom(uid):
+    def _boom(uid, **kw):
         raise clipping.UpstreamError("No se encontró 'ffmpeg'.")
 
     monkeypatch.setattr(clipping, "cut_clips", _boom)
@@ -54,7 +54,7 @@ def test_post_clips_upstream_error_maps_502(iso, client, monkeypatch):
 def test_post_clips_validation_error_maps_400(iso, client, monkeypatch):
     make_upload()
 
-    def _boom(uid):
+    def _boom(uid, **kw):
         raise clipping.ClipError("No hay momentos para cortar.")
 
     monkeypatch.setattr(clipping, "cut_clips", _boom)

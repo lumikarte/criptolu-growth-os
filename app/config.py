@@ -77,6 +77,19 @@ CLIP_PRESET = "veryfast"                 # x264: balance velocidad/calidad para 
 CLIP_WAVE_COLOR = "0xC026D3"             # magenta CriptoLú para el waveform de audios
 CLIP_BG_COLOR = "0x1A0033"               # morado profundo de fondo del waveform
 
+# Subtítulos quemados en los clips (PP-MVP-04, CRI-498). SRT + force_style vía libass.
+# El texto va SIEMPRE en el archivo SRT (nunca inline en el filtro) → sin superficie de
+# inyección al filtergraph. Las líneas se re-chunkean desde los word-timestamps para que
+# sean cortas y legibles en vertical (no el bloque largo típico de Whisper).
+SUB_FONT = "DejaVu Sans"                 # fuente garantizada en el sistema (no usar Arial)
+SUB_FONTSIZE = 18                        # unidades de libass; tunable
+SUB_OUTLINE = 3                          # contorno grueso → legible sobre cualquier fondo
+SUB_SHADOW = 1
+SUB_MARGIN_V = 80                        # margen inferior (Alignment=2, centrado abajo)
+SUB_MAX_CHARS = 32                       # corte de línea: ancho legible en 9:16
+SUB_MAX_WORDS = 7                        # corte de línea: palabras por cue
+SUB_MAX_DUR = 2.5                        # corte de línea: segundos por cue
+
 # Detección de mejores momentos (PP-MVP-01). Motor enchufable: Groq (default, reusa la
 # key de transcripción) o Claude (requiere ANTHROPIC_API_KEY, mejor criterio editorial).
 DETECT_DEFAULT_ENGINE = "groq"

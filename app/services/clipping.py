@@ -19,9 +19,10 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from uuid import uuid4
 
 from .. import config
-from . import detection, storage
+from . import detection, storage, transcription
 
 
 class ClipError(RuntimeError):
@@ -70,13 +71,39 @@ def probe_streams(src: Path) -> dict:
     }
 
 
-def _video_cmd(src: Path, start: float, dur: float, out: Path) -> list[str]:
-    """Recorta [start, start+dur] y reescala/recorta a 9:16 manteniendo el audio."""
+def _escape_sub_path(path: Path) -> str:
+    """Escapa la ruta del .srt para el parser de filtros de FFmpeg (subtitles=).
+
+    El texto del caption NUNCA viaja por acá (va en el cuerpo del SRT); solo la ruta y el
+    force_style, que son constantes nuestras. Igual escapamos `\\`, `:` y `'` como defensa.
+    """
+    s = str(path).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+    return s
+
+
+def _subtitles_filter(srt: Path) -> str:
+    """Construye el filtro `subtitles=` con el estilo 9:16 (force_style)."""
+    style = (
+        f"FontName={config.SUB_FONT},FontSize={config.SUB_FONTSIZE},"
+        f"Outline={config.SUB_OUTLINE},Shadow={config.SUB_SHADOW},"
+        f"Alignment=2,MarginV={config.SUB_MARGIN_V}"
+    )
+    return f"subtitles='{_escape_sub_path(srt)}':force_style='{style}'"
+
+
+def _video_cmd(src: Path, start: float, dur: float, out: Path, srt: Path | None = None) -> list[str]:
+    """Recorta [start, start+dur] y reescala/recorta a 9:16 manteniendo el audio.
+
+    Si `srt` viene, quema los subtítulos AL FINAL del filtro (sobre los frames 1080×1920,
+    así FontSize/MarginV están en píxeles de salida).
+    """
     w, h = config.CLIP_WIDTH, config.CLIP_HEIGHT
     vf = (
         f"scale={w}:{h}:force_original_aspect_ratio=increase,"
         f"crop={w}:{h},setsar=1"
     )
+    if srt is not None:
+        vf += "," + _subtitles_filter(srt)
     return [
         "ffmpeg", "-y",
         "-ss", f"{start:.3f}", "-i", str(src), "-t", f"{dur:.3f}",
@@ -88,14 +115,19 @@ def _video_cmd(src: Path, start: float, dur: float, out: Path) -> list[str]:
     ]
 
 
-def _waveform_cmd(src: Path, start: float, dur: float, out: Path) -> list[str]:
+def _waveform_cmd(src: Path, start: float, dur: float, out: Path, srt: Path | None = None) -> list[str]:
     """Genera un video 9:16 con waveform de marca sobre fondo (para sources solo-audio)."""
     w, h = config.CLIP_WIDTH, config.CLIP_HEIGHT
     # Fondo sólido de marca + waveform centrado encima; el audio se recorta con -ss/-t.
+    chain = (
+        f"[bg][wave]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p"
+    )
+    if srt is not None:
+        chain += "," + _subtitles_filter(srt)
     filt = (
         f"color=c={config.CLIP_BG_COLOR}:s={w}x{h}:d={dur:.3f}[bg];"
         f"[0:a]showwaves=s={w}x{int(h / 3)}:mode=cline:colors={config.CLIP_WAVE_COLOR}[wave];"
-        f"[bg][wave]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p[v]"
+        f"{chain}[v]"
     )
     return [
         "ffmpeg", "-y",
@@ -109,12 +141,80 @@ def _waveform_cmd(src: Path, start: float, dur: float, out: Path) -> list[str]:
     ]
 
 
-def cut_clips(upload_id: str) -> dict:
+def _caption_cues(transcript: dict, clip_start: float, clip_end: float) -> list[dict]:
+    """Arma cues de subtítulo (0-based al clip) re-chunkeando los word-timestamps.
+
+    Toma las palabras dentro de [clip_start, clip_end], las agrupa en líneas cortas
+    (por nº de palabras, caracteres o duración) y desplaza los tiempos restando clip_start
+    para que sean relativos al clip ya recortado. Si no hay words, cae a nivel de segmento.
+    """
+    dur = clip_end - clip_start
+
+    def _shift(t: float) -> float:
+        return round(min(max(t - clip_start, 0.0), dur), 3)
+
+    words: list[tuple[float, float, str]] = []
+    for seg in transcript.get("segments", []):
+        for w in seg.get("words", []):
+            ws, we = w.get("start"), w.get("end")
+            txt = (w.get("word") or "").strip()
+            if ws is None or we is None or not txt:
+                continue
+            if we <= clip_start or ws >= clip_end:  # fuera de la ventana
+                continue
+            words.append((ws, we, txt))
+
+    cues: list[dict] = []
+    if words:
+        group: list[tuple[float, float, str]] = []
+        for ws, we, txt in words:
+            tentative = " ".join(t for _, _, t in group + [(ws, we, txt)])
+            span = we - group[0][0] if group else 0.0
+            # Cerrar la línea actual antes de agregar si se pasaría de los límites.
+            if group and (
+                len(group) >= config.SUB_MAX_WORDS
+                or len(tentative) > config.SUB_MAX_CHARS
+                or span > config.SUB_MAX_DUR
+            ):
+                cues.append({
+                    "start": _shift(group[0][0]),
+                    "end": _shift(group[-1][1]),
+                    "text": " ".join(t for _, _, t in group),
+                })
+                group = []
+            group.append((ws, we, txt))
+        if group:
+            cues.append({
+                "start": _shift(group[0][0]),
+                "end": _shift(group[-1][1]),
+                "text": " ".join(t for _, _, t in group),
+            })
+    else:
+        # Fallback sin word-timestamps: una cue por segmento solapado con la ventana.
+        for seg in transcript.get("segments", []):
+            ss, se = seg.get("start"), seg.get("end")
+            txt = (seg.get("text") or "").strip()
+            if ss is None or se is None or not txt:
+                continue
+            if se <= clip_start or ss >= clip_end:
+                continue
+            cues.append({"start": _shift(ss), "end": _shift(se), "text": txt})
+
+    # Descartar cues degeneradas (start >= end tras el clamp).
+    return [c for c in cues if c["end"] > c["start"]]
+
+
+def cut_clips(upload_id: str, *, subtitles: bool | None = None) -> dict:
     """Corta en clips 9:16 los momentos detectados de una subida. Devuelve el índice.
 
     Lee ``moments.json``, decide modo video/waveform según el source y escribe cada clip
     en ``data/clips/<id>/clip_<n>.mp4`` más un ``clips.json``. Lanza ClipError si no hay
     momentos o el source no sirve; UpstreamError si ffmpeg/ffprobe no está o falla.
+
+    ``subtitles`` controla los captions quemados (PP-MVP-04):
+      - None  (default): se queman si hay transcripción; si no, se omiten con aviso.
+      - True  (explícito): se exige transcripción → ClipError si falta.
+      - False: nunca se queman.
     """
     meta = storage.load_metadata(upload_id)
     if meta is None:
@@ -143,6 +243,18 @@ def cut_clips(upload_id: str) -> dict:
             "El archivo no tiene pista de video ni de audio usable; no se puede cortar."
         )
 
+    # Política de subtítulos: quemarlos requiere transcripción. Si se pidieron explícitos y
+    # falta, error claro; si es el default, se omiten sin romper.
+    want_subs = subtitles is not False
+    transcript = transcription.load_transcript(upload_id) if want_subs else None
+    if want_subs and transcript is None:
+        if subtitles is True:
+            raise ClipError(
+                f"Se pidieron subtítulos pero la subida '{upload_id}' no tiene "
+                f"transcripción. Transcribila primero (/transcribe)."
+            )
+        want_subs = False  # default sin transcript → cortar sin captions
+
     out_dir = config.CLIPS_DIR / upload_id
     out_dir.mkdir(parents=True, exist_ok=True)
     # Limpiar clips de una corrida anterior para no dejar clip_N.mp4 obsoletos si esta
@@ -168,7 +280,24 @@ def cut_clips(upload_id: str) -> dict:
         if dur <= 0:
             continue  # momento fuera de rango del archivo: se omite
         out = out_dir / f"clip_{cid}.mp4"
-        _run(build(src, start, dur, out), timeout=config.FFMPEG_TIMEOUT)
+
+        # Subtítulos: SRT temporal con tiempos 0-based al clip. El texto va EN el archivo
+        # (nunca inline en el filtro). Se limpia sí o sí tras renderizar.
+        srt_path: Path | None = None
+        used_subs = False
+        if want_subs and transcript is not None:
+            cues = _caption_cues(transcript, start, end)
+            if cues:
+                srt_path = config.TMP_DIR / f"sub_{uuid4().hex}.srt"
+                srt_path.parent.mkdir(parents=True, exist_ok=True)
+                storage.atomic_write_text(srt_path, transcription.to_srt(cues))
+                used_subs = True
+        try:
+            _run(build(src, start, dur, out, srt_path), timeout=config.FFMPEG_TIMEOUT)
+        finally:
+            if srt_path is not None:
+                srt_path.unlink(missing_ok=True)
+
         rendered.append({
             "id": cid,
             "filename": out.name,
@@ -178,6 +307,7 @@ def cut_clips(upload_id: str) -> dict:
             "duration": dur,
             "score": c.get("score"),
             "title": c.get("title", ""),
+            "subtitles": used_subs,
         })
 
     if not rendered:
@@ -188,6 +318,7 @@ def cut_clips(upload_id: str) -> dict:
         "mode": mode,
         "width": config.CLIP_WIDTH,
         "height": config.CLIP_HEIGHT,
+        "subtitles": want_subs,
         "n_clips": len(rendered),
         "clips": rendered,
     }

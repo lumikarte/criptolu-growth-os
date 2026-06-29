@@ -40,7 +40,7 @@ uvicorn app.main:app --reload
 | GET | `/uploads/{id}/transcript` | Devuelve la transcripción (json) |
 | POST | `/uploads/{id}/detect` | Detecta mejores momentos (`?engine=groq\|claude&n_clips=5`) |
 | GET | `/uploads/{id}/moments` | Devuelve los momentos detectados (json) |
-| POST | `/uploads/{id}/clips` | Corta los momentos en clips verticales 9:16 con FFmpeg |
+| POST | `/uploads/{id}/clips` | Corta los momentos en clips verticales 9:16 con FFmpeg, con subtítulos quemados (`?subtitles=true\|false`) |
 | GET | `/uploads/{id}/clips` | Devuelve el índice de clips cortados (json) |
 | POST | `/uploads/{id}/export` | Exporta los clips a carpetas por plataforma (`?platforms=shorts,reels,tiktok`) |
 | GET | `/uploads/{id}/export` | Devuelve el índice de exports (json) |
@@ -59,6 +59,12 @@ uvicorn app.main:app --reload
 > source tiene video se recorta a 1080×1920; si es solo-audio se genera un waveform sobre
 > fondo de marca para que el clip siga siendo un video posteable. Salida en
 > `data/clips/<id>/clip_<n>.mp4` + `clips.json`.
+>
+> Los clips llevan **subtítulos quemados** (PP-MVP-04) re-chunkeados desde los
+> word-timestamps del transcript en líneas cortas legibles, vía `subtitles=` + libass
+> (fuente DejaVu Sans). Por defecto se queman si hay transcripción; `?subtitles=true` los
+> exige (400 si falta), `?subtitles=false` los desactiva. El texto va siempre en un `.srt`
+> temporal (nunca inline en el filtro).
 >
 > El export (PP-MVP-03) copia los clips a `data/exports/{shorts,reels,tiktok}/` con nombre
 > `<idcorto>_<rank>_<slug-título>.mp4` (slug ASCII saneado). Es idempotente: al re-exportar
