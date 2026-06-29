@@ -21,13 +21,19 @@ VALID_ID = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
 
 @pytest.fixture
 def iso(tmp_path, monkeypatch):
-    """Redirige UPLOADS/TRANSCRIPTS/CLIPS_DIR a un tmp aislado por test."""
-    up, tr, cl = tmp_path / "uploads", tmp_path / "transcripts", tmp_path / "clips"
-    for d in (up, tr, cl):
+    """Redirige UPLOADS/TRANSCRIPTS/CLIPS/EXPORTS_DIR a un tmp aislado por test."""
+    up, tr, cl, ex = (
+        tmp_path / "uploads", tmp_path / "transcripts",
+        tmp_path / "clips", tmp_path / "exports",
+    )
+    for d in (up, tr, cl, ex):
         d.mkdir()
+    for sub in config.EXPORT_SUBDIRS:
+        (ex / sub).mkdir()
     monkeypatch.setattr(config, "UPLOADS_DIR", up)
     monkeypatch.setattr(config, "TRANSCRIPTS_DIR", tr)
     monkeypatch.setattr(config, "CLIPS_DIR", cl)
+    monkeypatch.setattr(config, "EXPORTS_DIR", ex)
     return tmp_path
 
 
@@ -62,3 +68,22 @@ def make_moments(*, upload_id: str = VALID_ID, clips: list[dict] | None = None) 
     out_dir.mkdir(parents=True, exist_ok=True)
     payload = {"upload_id": upload_id, "n_clips": len(clips), "clips": clips}
     storage.atomic_write_text(out_dir / "moments.json", json.dumps(payload))
+
+
+def make_clips(*, upload_id: str = VALID_ID, clips: list[dict] | None = None) -> None:
+    """Crea data/clips/<id>/clip_N.mp4 falsos + clips.json (insumo de export)."""
+    if clips is None:
+        clips = [
+            {"id": 1, "score": 90, "title": "Gancho brutal"},
+            {"id": 2, "score": 80, "title": "Insight clave"},
+        ]
+    out_dir = config.CLIPS_DIR / upload_id
+    out_dir.mkdir(parents=True, exist_ok=True)
+    enriched = []
+    for c in clips:
+        f = out_dir / f"clip_{c['id']}.mp4"
+        f.write_bytes(b"fake-clip")
+        enriched.append({**c, "filename": f.name, "file": str(f)})
+    payload = {"upload_id": upload_id, "mode": "video", "n_clips": len(enriched),
+               "clips": enriched}
+    storage.atomic_write_text(out_dir / "clips.json", json.dumps(payload))

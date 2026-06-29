@@ -14,7 +14,7 @@ Stack: **FastAPI** (Python). Proyecto en Linear: *CriptoLú Growth OS* → épic
 | **FP-MVP-03** Whisper | Transcripción con timestamps (Groq) ✅ |
 | **PP-MVP-01** Detección | LLM elige los mejores momentos (Groq / Claude) ✅ |
 | **PP-MVP-02** Clips | FFmpeg corta los segmentos en vertical 9:16 ✅ |
-| PP-MVP-03 Export | Carpetas shorts/reels/tiktok + naming |
+| **PP-MVP-03** Export | Clips a carpetas shorts/reels/tiktok + naming ✅ |
 
 ## Correr en local
 
@@ -42,6 +42,8 @@ uvicorn app.main:app --reload
 | GET | `/uploads/{id}/moments` | Devuelve los momentos detectados (json) |
 | POST | `/uploads/{id}/clips` | Corta los momentos en clips verticales 9:16 con FFmpeg |
 | GET | `/uploads/{id}/clips` | Devuelve el índice de clips cortados (json) |
+| POST | `/uploads/{id}/export` | Exporta los clips a carpetas por plataforma (`?platforms=shorts,reels,tiktok`) |
+| GET | `/uploads/{id}/export` | Devuelve el índice de exports (json) |
 
 > La transcripción usa **Groq** (whisper-large-v3). Requiere `GROQ_API_KEY` en `.env`
 > (ver `.env.example`). Límite de archivo de la API: ~100 MB.
@@ -54,6 +56,10 @@ uvicorn app.main:app --reload
 > source tiene video se recorta a 1080×1920; si es solo-audio se genera un waveform sobre
 > fondo de marca para que el clip siga siendo un video posteable. Salida en
 > `data/clips/<id>/clip_<n>.mp4` + `clips.json`.
+>
+> El export (PP-MVP-03) copia los clips a `data/exports/{shorts,reels,tiktok}/` con nombre
+> `<idcorto>_<rank>_<slug-título>.mp4` (slug ASCII saneado). Es idempotente: al re-exportar
+> limpia solo los archivos de ese upload. Índice en `data/clips/<id>/export.json`.
 
 ## Tests
 
@@ -76,6 +82,7 @@ app/
     transcription.py # Groq whisper-large-v3
     detection.py     # mejores momentos (Groq/Claude)
     clipping.py      # corte 9:16 con FFmpeg
+    export.py        # export a carpetas por plataforma + naming
 tests/               # suite pytest (ffmpeg mockeado)
 data/                # gitignored
   uploads/  transcripts/  clips/

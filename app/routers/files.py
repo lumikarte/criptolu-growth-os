@@ -9,13 +9,15 @@ POST /uploads/{id}/detect          detectar mejores momentos (PP-MVP-01)
 GET  /uploads/{id}/moments         obtener los momentos detectados
 POST /uploads/{id}/clips           cortar los clips verticales con FFmpeg (PP-MVP-02)
 GET  /uploads/{id}/clips           obtener el índice de clips cortados
+POST /uploads/{id}/export          exportar los clips a carpetas por plataforma (PP-MVP-03)
+GET  /uploads/{id}/export          obtener el índice de exports
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from ..services import clipping, detection, storage, transcription
+from ..services import clipping, detection, export, storage, transcription
 
 router = APIRouter(tags=["files"])
 
@@ -132,3 +134,33 @@ def get_clips(upload_id: str) -> dict:
             detail=f"La subida '{upload_id}' todavía no tiene clips cortados.",
         )
     return clips
+
+
+@router.post("/uploads/{upload_id}/export")
+def export_clips(upload_id: str, platforms: str | None = None) -> dict:
+    """Exporta los clips a las carpetas de plataforma con naming consistente (PP-MVP-03).
+
+    `platforms` opcional: lista separada por comas (`shorts,reels,tiktok`); por defecto
+    exporta a las tres. Una plataforma desconocida devuelve 400.
+    """
+    if storage.load_metadata(upload_id) is None:
+        raise HTTPException(status_code=404, detail=f"Subida '{upload_id}' no encontrada.")
+    plats = [p for p in platforms.split(",") if p.strip()] if platforms else None
+    try:
+        return export.export_clips(upload_id, platforms=plats)
+    except export.ExportError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.get("/uploads/{upload_id}/export")
+def get_export(upload_id: str) -> dict:
+    """Devuelve el índice de exports (export.json) de una subida."""
+    if storage.load_metadata(upload_id) is None:
+        raise HTTPException(status_code=404, detail=f"Subida '{upload_id}' no encontrada.")
+    exp = export.load_export(upload_id)
+    if exp is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"La subida '{upload_id}' todavía no fue exportada.",
+        )
+    return exp
