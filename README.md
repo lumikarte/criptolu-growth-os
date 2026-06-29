@@ -44,6 +44,7 @@ uvicorn app.main:app --reload
 | GET | `/uploads/{id}/clips` | Devuelve el índice de clips cortados (json) |
 | POST | `/uploads/{id}/export` | Exporta los clips a carpetas por plataforma (`?platforms=shorts,reels,tiktok`) |
 | GET | `/uploads/{id}/export` | Devuelve el índice de exports (json) |
+| POST | `/uploads/{id}/process` | Orquesta todo el pipeline en una llamada (`?force=true` rehace; resume por defecto) |
 
 > La transcripción usa **Groq** (whisper-large-v3). Requiere `GROQ_API_KEY` en `.env`
 > (ver `.env.example`). Antes de subir, **FFmpeg downsamplea el audio a 16 kHz mono Opus**
@@ -69,6 +70,11 @@ uvicorn app.main:app --reload
 > El export (PP-MVP-03) copia los clips a `data/exports/{shorts,reels,tiktok}/` con nombre
 > `<idcorto>_<rank>_<slug-título>.mp4` (slug ASCII saneado). Es idempotente: al re-exportar
 > limpia solo los archivos de ese upload. Índice en `data/clips/<id>/export.json`.
+>
+> `POST /process` (PP-MVP-05) encadena las 4 etapas en una llamada. Es **bloqueante**
+> (puede tardar minutos: FFmpeg + Groq/Claude). Hace **resume** por defecto (salta etapas
+> con artefacto existente); `?force=true` rehace todo. Si una etapa falla, devuelve el
+> status real (502 upstream / 400 validación) con `detail: {stage, completed, message}`.
 
 ## Tests
 

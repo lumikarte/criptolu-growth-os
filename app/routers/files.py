@@ -11,13 +11,14 @@ POST /uploads/{id}/clips           cortar los clips verticales con FFmpeg (PP-MV
 GET  /uploads/{id}/clips           obtener el índice de clips cortados
 POST /uploads/{id}/export          exportar los clips a carpetas por plataforma (PP-MVP-03)
 GET  /uploads/{id}/export          obtener el índice de exports
+POST /uploads/{id}/process         orquestar transcribe→detect→clips→export (PP-MVP-05)
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from ..services import clipping, detection, export, storage, transcription
+from ..services import clipping, detection, export, pipeline, storage, transcription
 
 router = APIRouter(tags=["files"])
 
@@ -168,3 +169,35 @@ def get_export(upload_id: str) -> dict:
             detail=f"La subida '{upload_id}' todavía no fue exportada.",
         )
     return exp
+
+
+@router.post("/uploads/{upload_id}/process")
+def process_upload(
+    upload_id: str,
+    language: str | None = None,
+    engine: str | None = None,
+    n_clips: int | None = None,
+    subtitles: bool | None = None,
+    platforms: str | None = None,
+    force: bool = False,
+) -> dict:
+    """Orquesta el pipeline completo en una llamada (PP-MVP-05): transcribe→detect→clips→export.
+
+    Es **bloqueante** y puede tardar minutos (FFmpeg + llamadas a Groq/Claude); un proxy con
+    timeout corto podría cortar la conexión aunque el server siga trabajando. Por defecto
+    hace **resume** (salta etapas con artefacto existente); `?force=true` rehace todo.
+    Passthrough: `language, engine, n_clips, subtitles, platforms`.
+    """
+    if storage.load_metadata(upload_id) is None:
+        raise HTTPException(status_code=404, detail=f"Subida '{upload_id}' no encontrada.")
+    plats = [p for p in platforms.split(",") if p.strip()] if platforms else None
+    try:
+        return pipeline.process_upload(
+            upload_id, language=language, engine=engine, n_clips=n_clips,
+            subtitles=subtitles, platforms=plats, force=force,
+        )
+    except pipeline.PipelineError as e:
+        raise HTTPException(
+            status_code=502 if e.upstream else 400,
+            detail={"stage": e.stage, "completed": e.completed, "message": str(e)},
+        ) from e
