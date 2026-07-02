@@ -36,9 +36,11 @@ def client():
 def test_pieces_derived_from_clips_and_repurpose(iso):
     make_upload()
     make_clips()          # 2 clips
-    _make_repurpose()     # carousel + feed_post + thread
+    _make_repurpose()     # carousel + feed_post + thread + captions por red
     keys = {p["key"] for p in approval.list_pieces(VALID_ID)}
-    assert keys == {"clip:1", "clip:2", "carousel", "feed_post", "thread"}
+    expected = {"clip:1", "clip:2", "carousel", "feed_post", "thread"}
+    expected |= {f"caption:{n}" for n in config.REPURPOSE_NETWORKS}
+    assert keys == expected
 
 
 def test_pieces_empty_when_no_artifacts(iso):
@@ -110,6 +112,58 @@ def test_require_approved_guard(iso):
         approval.require_approved(VALID_ID, "clip:1")
     approval.decide(VALID_ID, "clip:1", approval.APPROVED)
     approval.require_approved(VALID_ID, "clip:1")  # no levanta
+
+
+# --------------------------------------------------------------------------- #
+# Binding al contenido: una aprobación NO sobrevive a la regeneración (el fix del NO GO)
+# --------------------------------------------------------------------------- #
+
+def test_approval_goes_stale_when_content_regenerated(iso):
+    make_upload()
+    make_clips()
+    approval.decide(VALID_ID, "clip:1", approval.APPROVED)
+    assert approval.is_approved(VALID_ID, "clip:1") is True
+
+    # regenerar los clips cambiando el contenido de clip:1 (nuevo título/momento)
+    make_clips(clips=[
+        {"id": 1, "score": 70, "title": "OTRO momento totalmente distinto"},
+        {"id": 2, "score": 80, "title": "Insight clave"},
+    ])
+    # la aprobación vieja ya no vale: falla cerrado
+    assert approval.is_approved(VALID_ID, "clip:1") is False
+    with pytest.raises(approval.NotApprovedError):
+        approval.require_approved(VALID_ID, "clip:1")
+    st = {p["key"]: p["status"] for p in approval.get_state(VALID_ID)["pieces"]}
+    assert st["clip:1"] == "stale"
+    assert approval.get_state(VALID_ID)["summary"]["stale"] == 1
+
+
+def test_reapproving_regenerated_content_clears_stale(iso):
+    make_upload()
+    make_clips()
+    approval.decide(VALID_ID, "clip:1", approval.APPROVED)
+    make_clips(clips=[{"id": 1, "score": 70, "title": "nuevo"}])
+    assert approval.is_approved(VALID_ID, "clip:1") is False
+    approval.decide(VALID_ID, "clip:1", approval.APPROVED)  # re-revisado y aprobado
+    assert approval.is_approved(VALID_ID, "clip:1") is True
+
+
+def test_captions_are_gated_pieces(iso):
+    make_upload()
+    _make_repurpose()
+    net = config.REPURPOSE_NETWORKS[0]
+    key = f"caption:{net}"
+    assert approval.is_approved(VALID_ID, key) is False
+    approval.decide(VALID_ID, key, approval.APPROVED)
+    assert approval.is_approved(VALID_ID, key) is True
+
+
+def test_note_too_long_raises(iso):
+    make_upload()
+    make_clips()
+    with pytest.raises(approval.ApprovalError):
+        approval.decide(VALID_ID, "clip:1", approval.REJECTED,
+                        note="x" * (config.APPROVAL_NOTE_MAX_CHARS + 1))
 
 
 # --------------------------------------------------------------------------- #

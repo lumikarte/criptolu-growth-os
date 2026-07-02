@@ -123,6 +123,9 @@ REPURPOSE_NETWORKS = ("tiktok", "reels", "shorts", "instagram_feed", "x")
 # Single-tenant: vive en un archivo editable (gitignored); si no existe, se usa el default.
 BRAND_VOICE_FILE = DATA_DIR / "brand_voice.md"
 BRAND_VOICE_MAX_CHARS = 8000              # tope defensivo del perfil (cabe de sobra en 1 pág)
+
+# Gate de aprobación humana (W-06, CRI-565): tope del texto de la nota de decisión.
+APPROVAL_NOTE_MAX_CHARS = 1000
 DEFAULT_BRAND_VOICE = """\
 # Voz de marca — CriptoLú
 
