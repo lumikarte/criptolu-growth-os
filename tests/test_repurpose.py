@@ -6,6 +6,8 @@ El LLM se mockea (se reemplaza el motor en ENGINES): no se hace ninguna llamada 
 from __future__ import annotations
 
 import json
+import urllib.request
+from contextlib import contextmanager
 
 import pytest
 from fastapi.testclient import TestClient
@@ -108,6 +110,25 @@ def test_repurpose_missing_caption_network_raises(iso, monkeypatch):
     monkeypatch.setitem(repurpose.ENGINES, "groq", lambda prompt: bad)
     with pytest.raises(repurpose.RepurposeError):
         repurpose.repurpose_upload(VALID_ID)
+
+
+def test_engine_groq_non_json_content_maps_upstream(iso, monkeypatch):
+    """Si Groq devuelve un envelope OK pero con contenido no-JSON, es 502 (UpstreamError)."""
+    monkeypatch.setattr(config, "GROQ_API_KEY", "gsk_fake")
+
+    class _Resp:
+        def read(self):
+            return json.dumps(
+                {"choices": [{"message": {"content": "esto no es json {"}}]}
+            ).encode()
+
+    @contextmanager
+    def fake_urlopen(req, timeout=0):
+        yield _Resp()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(repurpose.UpstreamError):
+        repurpose._engine_groq("prompt")
 
 
 def test_repurpose_slides_capped_at_max(iso, monkeypatch):

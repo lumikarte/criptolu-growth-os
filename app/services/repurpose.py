@@ -127,7 +127,7 @@ class UpstreamError(RepurposeError):
 def _format_segments(transcript: dict) -> str:
     """Texto plano de la transcripción para que el LLM entienda el episodio."""
     segs = transcript.get("segments") or []
-    return "\n".join(s["text"].strip() for s in segs)
+    return "\n".join((s.get("text") or "").strip() for s in segs)
 
 
 def build_prompt(transcript: dict, *, brand_voice: str | None = None) -> str:
@@ -161,6 +161,7 @@ def _engine_groq(prompt: str) -> dict:
     payload = json.dumps({
         "model": config.GROQ_LLM_MODEL,
         "temperature": 0.6,
+        "max_tokens": config.REPURPOSE_MAX_TOKENS,
         "response_format": {"type": "json_object"},
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -184,7 +185,12 @@ def _engine_groq(prompt: str) -> dict:
     except urllib.error.URLError as e:
         raise UpstreamError(f"Red al contactar Groq: {e}") from e
 
-    return json.loads(data["choices"][0]["message"]["content"])
+    # El envelope y el contenido vienen del upstream: un JSON truncado o una forma
+    # inesperada es una falla de la dependencia (→ 502), no del cliente.
+    try:
+        return json.loads(data["choices"][0]["message"]["content"])
+    except (KeyError, IndexError, TypeError, json.JSONDecodeError) as e:
+        raise UpstreamError(f"Respuesta de Groq inesperada o no-JSON: {e}") from e
 
 
 def _engine_claude(prompt: str) -> dict:
@@ -216,7 +222,10 @@ def _engine_claude(prompt: str) -> dict:
     if response.stop_reason == "refusal":
         raise RepurposeError("Claude rechazó la petición por seguridad.")
     text = next((b.text for b in response.content if b.type == "text"), "")
-    return json.loads(text)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        raise UpstreamError(f"Respuesta de Claude no-JSON o truncada: {e}") from e
 
 
 ENGINES = {

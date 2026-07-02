@@ -111,6 +111,9 @@ REPURPOSE_DEFAULT_ENGINE = "groq"
 REPURPOSE_MIN_SLIDES = 5                  # carrusel: mínimo de slides útiles
 REPURPOSE_MAX_SLIDES = 8                  # carrusel: máximo (se recorta si el LLM se pasa)
 REPURPOSE_MAX_THREAD_POSTS = 8            # hilo: tope de posts
+# El payload de respuesta es grande (carrusel + feed + hilo + N captions en un JSON); sin
+# un tope holgado el LLM puede truncar y devolver JSON inválido. Holgado a propósito.
+REPURPOSE_MAX_TOKENS = 6000
 REPURPOSE_THREAD_CHAR_LIMIT = 280        # X/Threads: largo por post (solo aviso, no corta)
 # Redes para las que se pide un caption adaptado (tono/largo/hashtags por red).
 REPURPOSE_NETWORKS = ("tiktok", "reels", "shorts", "instagram_feed", "x")
