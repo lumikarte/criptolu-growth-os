@@ -17,6 +17,7 @@ Todo se apoya en artefactos ya existentes; este módulo no publica nada.
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime, timezone
 
 from .. import config
@@ -46,6 +47,10 @@ def _load(upload_id: str) -> dict:
 
 
 def _save(upload_id: str, data: dict) -> None:
+    # Defensa en profundidad: nunca construir una ruta de escritura con un id sin validar
+    # (anti path traversal), aunque el router ya filtre por load_metadata.
+    if not storage.valid_upload_id(upload_id):
+        raise MetricsError(f"upload_id inválido: '{upload_id}'.")
     out_dir = config.CLIPS_DIR / upload_id
     out_dir.mkdir(parents=True, exist_ok=True)
     storage.atomic_write_text(
@@ -58,6 +63,10 @@ def _non_negative(value, field: str) -> float:
         n = float(value)
     except (TypeError, ValueError) as e:
         raise MetricsError(f"'{field}' debe ser un número.") from e
+    # Rechazar NaN/±inf: pasan el chequeo `< 0`, se persisten como JSON no estándar
+    # (token `NaN` pelado) y envenenan toda la agregación del brief con NaN.
+    if not math.isfinite(n):
+        raise MetricsError(f"'{field}' debe ser un número finito.")
     if n < 0:
         raise MetricsError(f"'{field}' no puede ser negativo.")
     return n

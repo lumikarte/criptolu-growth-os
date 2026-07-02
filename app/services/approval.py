@@ -204,14 +204,20 @@ def decide(upload_id: str, piece_key: str, status: str, note: str = "") -> dict:
         )
     decisions = load_approvals(upload_id)
     prev = decisions.get(piece_key) or {}
+    # nº de decisiones que cambiaron algo. Sirve a la medición (W-07): "aprobada sin
+    # retoque" = aprobada en la primera y única decisión sustantiva (revisions == 1). Una
+    # re-decisión idéntica (mismo status sobre el mismo contenido, p. ej. doble click) NO
+    # cuenta como retoque.
+    unchanged = (
+        prev.get("status") == status and prev.get("fingerprint") == piece["fingerprint"]
+    )
+    revisions = int(prev.get("revisions", 0)) + (0 if unchanged else 1)
     entry = {
         "status": status,
         "note": note,
         "updated_at": _now(),
         "fingerprint": piece["fingerprint"],
-        # nº de veces que se decidió esta pieza. Sirve a la medición (W-07): "aprobada sin
-        # retoque" = aprobada en la primera y única decisión (revisions == 1).
-        "revisions": int(prev.get("revisions", 0)) + 1,
+        "revisions": revisions,
     }
     decisions[piece_key] = entry
     _save_approvals(upload_id, decisions)

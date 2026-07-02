@@ -39,6 +39,29 @@ def test_record_work_negative_raises(iso):
         metrics.record_episode_work(VALID_ID, -5)
 
 
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_record_work_non_finite_raises(iso, bad):
+    make_upload()
+    make_clips()
+    with pytest.raises(metrics.MetricsError):
+        metrics.record_episode_work(VALID_ID, bad)
+
+
+def test_non_finite_endpoint_maps_400_not_persisted(iso, client):
+    make_upload()
+    make_clips()
+    r = client.post(f"/uploads/{VALID_ID}/metrics/work?manual_minutes=nan")
+    assert r.status_code == 400
+    # no debe haber quedado metrics.json envenenado con NaN
+    assert metrics.episode_report(VALID_ID)["episode"] is None
+
+
+def test_record_work_invalid_id_raises(iso):
+    # defensa en profundidad: no escribir fuera de CLIPS_DIR con un id de traversal
+    with pytest.raises(metrics.MetricsError):
+        metrics.record_episode_work("../../../../tmp/pwned", 10)
+
+
 def test_record_piece_performance(iso):
     make_upload()
     make_clips()
@@ -78,6 +101,14 @@ def test_approved_clean_counts_only_first_time_approvals(iso):
     counts = metrics._approval_counts(VALID_ID)
     assert counts["n_approved"] == 2
     assert counts["n_approved_clean"] == 1
+
+
+def test_double_identical_approve_stays_clean(iso):
+    make_upload()
+    make_clips()
+    approval.decide(VALID_ID, "clip:1", approval.APPROVED)
+    approval.decide(VALID_ID, "clip:1", approval.APPROVED)  # doble click, sin cambios
+    assert metrics._approval_counts(VALID_ID)["n_approved_clean"] == 1
 
 
 # --------------------------------------------------------------------------- #
