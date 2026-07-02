@@ -163,6 +163,7 @@ def get_state(upload_id: str) -> dict:
             "status": status,
             "note": (d or {}).get("note", ""),
             "updated_at": (d or {}).get("updated_at"),
+            "revisions": int((d or {}).get("revisions", 0)),
         })
     total = len(pieces)
     return {
@@ -202,11 +203,15 @@ def decide(upload_id: str, piece_key: str, status: str, note: str = "") -> dict:
             f"La nota supera el máximo de {config.APPROVAL_NOTE_MAX_CHARS} caracteres."
         )
     decisions = load_approvals(upload_id)
+    prev = decisions.get(piece_key) or {}
     entry = {
         "status": status,
         "note": note,
         "updated_at": _now(),
         "fingerprint": piece["fingerprint"],
+        # nº de veces que se decidió esta pieza. Sirve a la medición (W-07): "aprobada sin
+        # retoque" = aprobada en la primera y única decisión (revisions == 1).
+        "revisions": int(prev.get("revisions", 0)) + 1,
     }
     decisions[piece_key] = entry
     _save_approvals(upload_id, decisions)

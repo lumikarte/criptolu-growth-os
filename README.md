@@ -18,6 +18,7 @@ Stack: **FastAPI** (Python). Proyecto en Linear: *CriptoLú Growth OS* → épic
 | **W-03** Repropósito | De 1 transcripción: carrusel + feed + hilo + captions por red (LLM) ✅ |
 | **W-04** Voz de marca | Perfil de marca de 1 página inyectado en cada caption ✅ |
 | **W-06** Aprobación | Gate human-in-the-loop: nada se publica sin OK explícito ✅ |
+| **W-07** Medición | Alcance/engagement por pieza + Daily Brief (aprobadas sin retoque) ✅ |
 
 ## Correr en local
 
@@ -53,6 +54,10 @@ uvicorn app.main:app --reload
 | PUT | `/brand-voice` | Guarda/actualiza el perfil de voz de marca (`{"voice": "..."}`) |
 | GET | `/uploads/{id}/approvals` | Estado del gate: piezas publicables + status + resumen |
 | POST | `/uploads/{id}/approvals/{piece}` | Decidir sobre una pieza (`?decision=approve\|reject\|reset`) |
+| POST | `/uploads/{id}/metrics/work` | Registrar minutos de trabajo manual del episodio (`?manual_minutes=`) |
+| POST | `/uploads/{id}/metrics/pieces/{piece}` | Registrar alcance/engagement de una pieza (`?reach=&engagement=`) |
+| GET | `/uploads/{id}/metrics` | Reporte de medición del episodio |
+| GET | `/brief` | Daily Brief: agrega los episodios (`?date=YYYY-MM-DD`) |
 | POST | `/uploads/{id}/process` | Orquesta todo el pipeline en una llamada (`?force=true` rehace; resume por defecto) |
 
 > La transcripción usa **Groq** (whisper-large-v3). Requiere `GROQ_API_KEY` en `.env`
