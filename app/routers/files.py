@@ -11,6 +11,8 @@ POST /uploads/{id}/clips           cortar los clips verticales con FFmpeg (PP-MV
 GET  /uploads/{id}/clips           obtener el índice de clips cortados
 POST /uploads/{id}/export          exportar los clips a carpetas por plataforma (PP-MVP-03)
 GET  /uploads/{id}/export          obtener el índice de exports
+POST /uploads/{id}/repurpose       repropósito multi-formato desde la transcripción (W-03)
+GET  /uploads/{id}/repurpose       obtener el paquete multi-formato
 POST /uploads/{id}/process         orquestar transcribe→detect→clips→export (PP-MVP-05)
 """
 
@@ -18,7 +20,15 @@ from __future__ import annotations
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from ..services import clipping, detection, export, pipeline, storage, transcription
+from ..services import (
+    clipping,
+    detection,
+    export,
+    pipeline,
+    repurpose,
+    storage,
+    transcription,
+)
 
 router = APIRouter(tags=["files"])
 
@@ -169,6 +179,37 @@ def get_export(upload_id: str) -> dict:
             detail=f"La subida '{upload_id}' todavía no fue exportada.",
         )
     return exp
+
+
+@router.post("/uploads/{upload_id}/repurpose")
+def repurpose_upload(upload_id: str, engine: str | None = None) -> dict:
+    """Genera el paquete multi-formato (carrusel, feed, hilo, captions) y lo guarda (W-03).
+
+    Requiere que la subida ya esté transcrita. `engine` opcional ('groq' por defecto,
+    'claude' si hay ANTHROPIC_API_KEY). El diferencial: de 1 fuente, texto para varias redes.
+    """
+    if storage.load_metadata(upload_id) is None:
+        raise HTTPException(status_code=404, detail=f"Subida '{upload_id}' no encontrada.")
+    try:
+        return repurpose.repurpose_upload(upload_id, engine=engine)
+    except repurpose.UpstreamError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except repurpose.RepurposeError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.get("/uploads/{upload_id}/repurpose")
+def get_repurpose(upload_id: str) -> dict:
+    """Devuelve el paquete multi-formato (repurpose.json) de una subida."""
+    if storage.load_metadata(upload_id) is None:
+        raise HTTPException(status_code=404, detail=f"Subida '{upload_id}' no encontrada.")
+    pkg = repurpose.load_repurpose(upload_id)
+    if pkg is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"La subida '{upload_id}' todavía no tiene contenido repurposado.",
+        )
+    return pkg
 
 
 @router.post("/uploads/{upload_id}/process")

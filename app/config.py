@@ -103,6 +103,18 @@ GROQ_LLM_MODEL = "llama-3.3-70b-versatile"
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 CLAUDE_MODEL = "claude-opus-4-8"
 
+# Repropósito multi-formato (W-03, CRI-562). El DIFERENCIAL: de 1 misma transcripción el
+# LLM genera varios formatos de texto además de los clips — carrusel (slides), post de
+# feed, hilo (X/Threads) y un caption por red. Motor enchufable igual que la detección
+# (groq default / claude). El texto se valida y normaliza en código; el LLM solo redacta.
+REPURPOSE_DEFAULT_ENGINE = "groq"
+REPURPOSE_MIN_SLIDES = 5                  # carrusel: mínimo de slides útiles
+REPURPOSE_MAX_SLIDES = 8                  # carrusel: máximo (se recorta si el LLM se pasa)
+REPURPOSE_MAX_THREAD_POSTS = 8            # hilo: tope de posts
+REPURPOSE_THREAD_CHAR_LIMIT = 280        # X/Threads: largo por post (solo aviso, no corta)
+# Redes para las que se pide un caption adaptado (tono/largo/hashtags por red).
+REPURPOSE_NETWORKS = ("tiktok", "reels", "shorts", "instagram_feed", "x")
+
 
 def ensure_dirs() -> None:
     """Crea la estructura de carpetas de datos (idempotente). Se llama al arrancar."""
