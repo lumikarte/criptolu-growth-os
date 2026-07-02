@@ -17,6 +17,7 @@ Stack: **FastAPI** (Python). Proyecto en Linear: *CriptoLú Growth OS* → épic
 | **PP-MVP-03** Export | Clips a carpetas shorts/reels/tiktok + naming ✅ |
 | **W-03** Repropósito | De 1 transcripción: carrusel + feed + hilo + captions por red (LLM) ✅ |
 | **W-04** Voz de marca | Perfil de marca de 1 página inyectado en cada caption ✅ |
+| **W-06** Aprobación | Gate human-in-the-loop: nada se publica sin OK explícito ✅ |
 
 ## Correr en local
 
@@ -50,6 +51,8 @@ uvicorn app.main:app --reload
 | GET | `/uploads/{id}/repurpose` | Devuelve el paquete multi-formato (json) |
 | GET | `/brand-voice` | Devuelve el perfil de voz de marca vigente (propio o default) |
 | PUT | `/brand-voice` | Guarda/actualiza el perfil de voz de marca (`{"voice": "..."}`) |
+| GET | `/uploads/{id}/approvals` | Estado del gate: piezas publicables + status + resumen |
+| POST | `/uploads/{id}/approvals/{piece}` | Decidir sobre una pieza (`?decision=approve\|reject\|reset`) |
 | POST | `/uploads/{id}/process` | Orquesta todo el pipeline en una llamada (`?force=true` rehace; resume por defecto) |
 
 > La transcripción usa **Groq** (whisper-large-v3). Requiere `GROQ_API_KEY` en `.env`
