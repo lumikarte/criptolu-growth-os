@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from . import config
-from .routers import files, health
+from .routers import brand, files, health
 
 
 @asynccontextmanager
@@ -29,3 +29,4 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title=config.APP_NAME, version=config.APP_VERSION, lifespan=lifespan)
 app.include_router(health.router)
 app.include_router(files.router)
+app.include_router(brand.router)

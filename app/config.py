@@ -118,6 +118,33 @@ REPURPOSE_THREAD_CHAR_LIMIT = 280        # X/Threads: largo por post (solo aviso
 # Redes para las que se pide un caption adaptado (tono/largo/hashtags por red).
 REPURPOSE_NETWORKS = ("tiktok", "reels", "shorts", "instagram_feed", "x")
 
+# Voz de marca (W-04, CRI-563). Perfil de 1 página (tono, hacé/no hagás, ejemplos) que se
+# inyecta en cada caption para que el contenido suene como la marca — el moat, como prompt.
+# Single-tenant: vive en un archivo editable (gitignored); si no existe, se usa el default.
+BRAND_VOICE_FILE = DATA_DIR / "brand_voice.md"
+BRAND_VOICE_MAX_CHARS = 8000              # tope defensivo del perfil (cabe de sobra en 1 pág)
+DEFAULT_BRAND_VOICE = """\
+# Voz de marca — CriptoLú
+
+**Quién es:** CriptoLú enseña cripto en español LatAm de forma clara, cercana y sin humo.
+Educa, no promete hacerse rico rápido.
+
+**Tono:** cercano y directo, como una amiga que sabe del tema y te lo explica sin
+condescendencia. Con energía, algo de humor, cero solemnidad de banco.
+
+**Hacé:**
+- Hablá en español LatAm natural (vos, no tú).
+- Explicá el término técnico la primera vez que aparece.
+- Priorizá lo práctico y accionable; ejemplos concretos.
+- Sé honesta sobre el riesgo: cripto es volátil.
+
+**No hagás:**
+- No prometas rendimientos ni des consejos financieros ("esto va a subir").
+- No uses jerga sin explicar ni traducciones robóticas del inglés.
+- No metas miedo (FOMO) ni urgencia falsa.
+- Nada de mayúsculas gritonas ni exceso de emojis.
+"""
+
 
 def ensure_dirs() -> None:
     """Crea la estructura de carpetas de datos (idempotente). Se llama al arrancar."""

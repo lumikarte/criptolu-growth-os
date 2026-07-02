@@ -35,6 +35,8 @@ def iso(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "CLIPS_DIR", cl)
     monkeypatch.setattr(config, "EXPORTS_DIR", ex)
     monkeypatch.setattr(config, "TMP_DIR", tmp)
+    # Voz de marca (W-04): aislar el archivo del perfil para no tocar el data/ real.
+    monkeypatch.setattr(config, "BRAND_VOICE_FILE", tmp_path / "brand_voice.md")
     return tmp_path
 
 

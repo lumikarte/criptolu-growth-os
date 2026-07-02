@@ -24,7 +24,7 @@ import urllib.error
 import urllib.request
 
 from .. import config
-from . import storage, transcription
+from . import brand, storage, transcription
 
 # Groq está detrás de Cloudflare y bloquea el User-Agent por defecto de Python (error
 # 1010); con un UA de navegador las requests pasan (igual que en detection/transcription).
@@ -339,7 +339,10 @@ def repurpose_upload(
     if eng not in ENGINES:
         raise RepurposeError(f"Motor desconocido '{eng}'. Disponibles: {', '.join(ENGINES)}")
 
-    prompt = build_prompt(transcript, brand_voice=brand_voice)
+    # Voz de marca (W-04): si no se pasa una explícita, se inyecta el perfil guardado
+    # (o el default). Así cada caption suena como la marca sin pedirlo en cada llamada.
+    voice = brand_voice if brand_voice is not None else brand.load_brand_voice()
+    prompt = build_prompt(transcript, brand_voice=voice)
     raw = ENGINES[eng](prompt)
     content = _validate_package(raw)
 
@@ -350,6 +353,10 @@ def repurpose_upload(
         "model": model,
         "criteria_version": CRITERIA_VERSION,
         "networks": list(config.REPURPOSE_NETWORKS),
+        "brand_voice": {
+            "applied": bool(voice),
+            "customized": brand_voice is None and brand.is_customized(),
+        },
         "content": content,
     }
     out_dir = config.CLIPS_DIR / upload_id

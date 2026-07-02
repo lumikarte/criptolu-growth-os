@@ -16,6 +16,7 @@ Stack: **FastAPI** (Python). Proyecto en Linear: *CriptoLú Growth OS* → épic
 | **PP-MVP-02** Clips | FFmpeg corta los segmentos en vertical 9:16 ✅ |
 | **PP-MVP-03** Export | Clips a carpetas shorts/reels/tiktok + naming ✅ |
 | **W-03** Repropósito | De 1 transcripción: carrusel + feed + hilo + captions por red (LLM) ✅ |
+| **W-04** Voz de marca | Perfil de marca de 1 página inyectado en cada caption ✅ |
 
 ## Correr en local
 
@@ -47,6 +48,8 @@ uvicorn app.main:app --reload
 | GET | `/uploads/{id}/export` | Devuelve el índice de exports (json) |
 | POST | `/uploads/{id}/repurpose` | Genera el paquete multi-formato desde la transcripción (`?engine=groq\|claude`) |
 | GET | `/uploads/{id}/repurpose` | Devuelve el paquete multi-formato (json) |
+| GET | `/brand-voice` | Devuelve el perfil de voz de marca vigente (propio o default) |
+| PUT | `/brand-voice` | Guarda/actualiza el perfil de voz de marca (`{"voice": "..."}`) |
 | POST | `/uploads/{id}/process` | Orquesta todo el pipeline en una llamada (`?force=true` rehace; resume por defecto) |
 
 > La transcripción usa **Groq** (whisper-large-v3). Requiere `GROQ_API_KEY` en `.env`
