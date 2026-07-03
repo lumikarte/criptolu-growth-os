@@ -140,6 +140,34 @@ def _seed_job() -> dict:
 # Encolado REAL con fakeredis (ejercita el camino RQ, sin Redis corriendo)
 # --------------------------------------------------------------------------- #
 
+def test_generic_exception_records_stage(iso, eager, client, monkeypatch):
+    make_upload()
+
+    def boom(uid, on_progress=None, **kw):
+        if on_progress:
+            on_progress("clips", "running")   # estábamos en 'clips' cuando reventó
+        raise ValueError("bug inesperado")
+
+    monkeypatch.setattr(pipeline, "process_upload", boom)
+    body = client.post(f"/uploads/{VALID_ID}/process").json()
+    job = client.get(body["poll"]).json()
+    assert job["status"] == "failed"
+    assert job["failed"]["stage"] == "clips"          # recuperada del progreso, no None
+    assert job["failed"]["upstream"] is False
+
+
+def test_enqueue_failure_marks_job_failed_not_orphan(iso, monkeypatch):
+    make_upload()
+    monkeypatch.setattr(config, "JOBS_EAGER", False)
+    # simular Redis inaccesible al encolar
+    monkeypatch.setattr("redis.Redis.from_url",
+                        lambda url: (_ for _ in ()).throw(ConnectionError("no redis")))
+    with pytest.raises(Exception):
+        jobs.enqueue(VALID_ID, force=False)
+    # el job NO debe quedar 'queued' (envenenaría el 409); queda failed → no activo
+    assert jobs.active_job_for(VALID_ID) is None
+
+
 def test_enqueue_real_queue_with_fakeredis(iso, monkeypatch):
     fakeredis = pytest.importorskip("fakeredis")
     rq = pytest.importorskip("rq")

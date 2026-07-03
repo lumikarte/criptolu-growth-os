@@ -79,7 +79,10 @@ def active_job_for(upload_id: str) -> dict | None:
     if not config.JOBS_DIR.is_dir():
         return None
     for f in config.JOBS_DIR.glob("*.json"):
-        rec = json.loads(f.read_text(encoding="utf-8"))
+        try:
+            rec = json.loads(f.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            continue  # un archivo corrupto no debe romper el chequeo del 409 de toda subida
         if rec.get("upload_id") == upload_id and rec.get("status") in _ACTIVE:
             return rec
     return None
@@ -116,10 +119,20 @@ def enqueue(upload_id: str, **params) -> dict:
     import redis
     from rq import Queue
 
-    conn = redis.Redis.from_url(config.REDIS_URL)
-    Queue(config.JOBS_QUEUE_NAME, connection=conn).enqueue(
-        "app.services.jobs.run_job", job_id, job_timeout=config.JOB_TIMEOUT,
-    )
+    try:
+        conn = redis.Redis.from_url(config.REDIS_URL)
+        Queue(config.JOBS_QUEUE_NAME, connection=conn).enqueue(
+            "app.services.jobs.run_job", job_id, job_timeout=config.JOB_TIMEOUT,
+        )
+    except Exception as e:  # noqa: BLE001 — Redis caído no debe dejar un job 'queued' colgado
+        # Si no se pudo encolar, marcar el job failed para que no quede "activo" bloqueando
+        # el 409 de futuros POST (active_job_for solo cuenta queued/started).
+        update(job_id, {
+            "status": "failed", "finished_at": _now(),
+            "failed": {"stage": None, "message": f"No se pudo encolar el job: {e}",
+                       "upstream": True},
+        })
+        raise
     return rec
 
 
@@ -135,14 +148,19 @@ def run_job(job_id: str) -> None:
     update(job_id, {"status": "started", "started_at": _now()})
 
     def on_progress(stage: str, state: str) -> None:
-        r = load(job_id)
-        if r is None:
-            return
-        r["stages"][stage] = state
-        if state in ("done", "skipped") and stage not in r["completed"]:
-            r["completed"].append(stage)
-        r["current_stage"] = stage if state == "running" else None
-        _save(r)
+        # Best-effort: un fallo al persistir el progreso NO debe abortar una etapa que sí
+        # se completó (la excepción subiría al pipeline y marcaría el job como failed).
+        try:
+            r = load(job_id)
+            if r is None:
+                return
+            r["stages"][stage] = state
+            if state in ("done", "skipped") and stage not in r["completed"]:
+                r["completed"].append(stage)
+            r["current_stage"] = stage if state == "running" else None
+            _save(r)
+        except Exception:  # noqa: BLE001 — el progreso es informativo, no crítico
+            pass
 
     try:
         result = pipeline.process_upload(
@@ -158,8 +176,10 @@ def run_job(job_id: str) -> None:
             "failed": {"stage": e.stage, "message": str(e), "upstream": e.upstream},
         })
     except Exception as e:  # noqa: BLE001 — un bug no debe tumbar el worker; queda en el job
+        # Releer el registro para recuperar la etapa donde se estaba trabajando (on_progress
+        # ya la escribió); `rec` es el snapshot inicial y no la refleja.
+        cur = (load(job_id) or {}).get("current_stage")
         update(job_id, {
             "status": "failed", "current_stage": None, "finished_at": _now(),
-            "failed": {"stage": rec.get("current_stage"), "message": str(e),
-                       "upstream": False},
+            "failed": {"stage": cur, "message": str(e), "upstream": False},
         })
