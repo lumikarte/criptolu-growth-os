@@ -1,0 +1,18 @@
+# Infra de desarrollo para el pipeline asíncrono (CRI-603).
+# Valkey = fork BSD de Redis (sin la duda de licencia AGPL de Redis 2025+); protocolo y
+# cliente redis-py idénticos. La cola es efímera: el estado real del job vive en data/jobs/.
+#
+#   docker compose up -d redis
+#   REDIS_URL=redis://localhost:6379/0 rq worker podcast-pipeline   # en otra terminal
+#   uvicorn app.main:app --reload                                   # el API
+services:
+  redis:
+    image: valkey/valkey:8-alpine
+    ports:
+      - "6379:6379"
+    command: valkey-server --save "" --appendonly no
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5

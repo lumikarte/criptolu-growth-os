@@ -171,9 +171,22 @@ condescendencia. Con energía, algo de humor, cero solemnidad de banco.
 """
 
 
+# Pipeline asíncrono con cola de jobs (CRI-603). POST /process encola y devuelve 202 con un
+# job_id; el trabajo pesado (FFmpeg + LLM) corre en un worker aparte para no bloquear el
+# request ni morir por timeout de proxy. Cola sobre Redis/Valkey vía RQ (sync, fork-per-job).
+# El ESTADO/PROGRESO del job vive en data/jobs/<id>.json (fuente de verdad, sobrevive a
+# caídas de Redis); Redis solo lleva la mecánica de cola.
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+JOBS_QUEUE_NAME = "podcast-pipeline"
+JOBS_DIR = DATA_DIR / "jobs"
+JOB_TIMEOUT = 30 * 60                    # s; tope duro por job (episodio largo + FFmpeg + LLM)
+# Modo eager: ejecuta el job inline en el mismo proceso (sin Redis ni worker). Para dev/test.
+JOBS_EAGER = os.environ.get("JOBS_EAGER") == "1"
+
+
 def ensure_dirs() -> None:
     """Crea la estructura de carpetas de datos (idempotente). Se llama al arrancar."""
-    for d in (UPLOADS_DIR, TRANSCRIPTS_DIR, CLIPS_DIR, EXPORTS_DIR):
+    for d in (UPLOADS_DIR, TRANSCRIPTS_DIR, CLIPS_DIR, EXPORTS_DIR, JOBS_DIR):
         d.mkdir(parents=True, exist_ok=True)
     for sub in EXPORT_SUBDIRS:
         (EXPORTS_DIR / sub).mkdir(parents=True, exist_ok=True)

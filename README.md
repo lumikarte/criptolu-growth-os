@@ -58,7 +58,8 @@ uvicorn app.main:app --reload
 | POST | `/uploads/{id}/metrics/pieces/{piece}` | Registrar alcance/engagement de una pieza (`?reach=&engagement=`) |
 | GET | `/uploads/{id}/metrics` | Reporte de medición del episodio |
 | GET | `/brief` | Daily Brief: agrega los episodios (`?date=YYYY-MM-DD`) |
-| POST | `/uploads/{id}/process` | Orquesta todo el pipeline en una llamada (`?force=true` rehace; resume por defecto) |
+| POST | `/uploads/{id}/process` | **Encola** el pipeline y devuelve **202** con `job_id` (async; `?force=true` rehace) |
+| GET | `/jobs/{id}` | Estado y progreso por etapa de un job encolado |
 
 > La transcripción usa **Groq** (whisper-large-v3). Requiere `GROQ_API_KEY` en `.env`
 > (ver `.env.example`). Antes de subir, **FFmpeg downsamplea el audio a 16 kHz mono Opus**
@@ -85,10 +86,19 @@ uvicorn app.main:app --reload
 > `<idcorto>_<rank>_<slug-título>.mp4` (slug ASCII saneado). Es idempotente: al re-exportar
 > limpia solo los archivos de ese upload. Índice en `data/clips/<id>/export.json`.
 >
-> `POST /process` (PP-MVP-05) encadena las 4 etapas en una llamada. Es **bloqueante**
-> (puede tardar minutos: FFmpeg + Groq/Claude). Hace **resume** por defecto (salta etapas
-> con artefacto existente); `?force=true` rehace todo. Si una etapa falla, devuelve el
-> status real (502 upstream / 400 validación) con `detail: {stage, completed, message}`.
+> `POST /process` (PP-MVP-05 + CRI-603) encadena las 4 etapas. Es **asíncrono**: encola un
+> job y devuelve **202** con `job_id`; el trabajo pesado (FFmpeg + Groq/Claude, minutos)
+> corre en un **worker aparte**, así ningún proxy corta la conexión. Seguí el avance con
+> `GET /jobs/{id}` (status queued/started/finished/failed + progreso por etapa; los fallos
+> quedan en `failed: {stage, message, upstream}`). Hace **resume** por defecto; `?force=true`
+> rehace. 409 si ya hay un job activo para esa subida.
+>
+> **Correr el pipeline async (dev):** la cola usa Redis/Valkey.
+> ```bash
+> docker compose up -d redis                 # Valkey (fork BSD de Redis)
+> REDIS_URL=redis://localhost:6379/0 rq worker podcast-pipeline   # worker, en otra terminal
+> ```
+> Sin infra: `JOBS_EAGER=1` corre el pipeline inline en el proceso del API (dev/test).
 
 ## Tests
 

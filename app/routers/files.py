@@ -30,7 +30,7 @@ from ..services import (
     clipping,
     detection,
     export,
-    pipeline,
+    jobs,
     repurpose,
     storage,
     transcription,
@@ -259,7 +259,7 @@ def get_carousel_slide(upload_id: str, index: int) -> FileResponse:
     return FileResponse(slide, media_type="image/png")
 
 
-@router.post("/uploads/{upload_id}/process")
+@router.post("/uploads/{upload_id}/process", status_code=202)
 def process_upload(
     upload_id: str,
     language: str | None = None,
@@ -269,23 +269,28 @@ def process_upload(
     platforms: str | None = None,
     force: bool = False,
 ) -> dict:
-    """Orquesta el pipeline completo en una llamada (PP-MVP-05): transcribe→detect→clips→export.
+    """Encola el pipeline completo (transcribe→detect→clips→export) y devuelve 202 (CRI-603).
 
-    Es **bloqueante** y puede tardar minutos (FFmpeg + llamadas a Groq/Claude); un proxy con
-    timeout corto podría cortar la conexión aunque el server siga trabajando. Por defecto
-    hace **resume** (salta etapas con artefacto existente); `?force=true` rehace todo.
-    Passthrough: `language, engine, n_clips, subtitles, platforms`.
+    **No bloquea**: el trabajo pesado (FFmpeg + Groq/Claude, minutos) corre en un worker
+    aparte. Devuelve un `job_id`; seguí el avance con `GET /jobs/{job_id}`. `?force=true`
+    rehace todo (resume por defecto). 409 si ya hay un job activo para esa subida (salvo
+    `force`). Passthrough: `language, engine, n_clips, subtitles, platforms`.
     """
     if storage.load_metadata(upload_id) is None:
         raise HTTPException(status_code=404, detail=f"Subida '{upload_id}' no encontrada.")
-    plats = [p for p in platforms.split(",") if p.strip()] if platforms else None
-    try:
-        return pipeline.process_upload(
-            upload_id, language=language, engine=engine, n_clips=n_clips,
-            subtitles=subtitles, platforms=plats, force=force,
-        )
-    except pipeline.PipelineError as e:
+    active = jobs.active_job_for(upload_id)
+    if active and not force:
         raise HTTPException(
-            status_code=502 if e.upstream else 400,
-            detail={"stage": e.stage, "completed": e.completed, "message": str(e)},
-        ) from e
+            status_code=409,
+            detail={"message": "Ya hay un job activo para esta subida.",
+                    "job_id": active["job_id"], "status": active["status"]},
+        )
+    plats = [p for p in platforms.split(",") if p.strip()] if platforms else None
+    rec = jobs.enqueue(
+        upload_id, language=language, engine=engine, n_clips=n_clips,
+        subtitles=subtitles, platforms=plats, force=force,
+    )
+    return {
+        "job_id": rec["job_id"], "upload_id": upload_id,
+        "status": rec["status"], "poll": f"/jobs/{rec['job_id']}",
+    }

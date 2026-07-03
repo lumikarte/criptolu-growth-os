@@ -15,6 +15,8 @@ traduce al status HTTP real (no 200-con-error).
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from . import clipping, detection, export, storage, transcription
 
 # Las tres UpstreamError son clases INDEPENDIENTES (no comparten base) → tupla para isinstance.
@@ -52,25 +54,38 @@ def process_upload(
     subtitles: bool | None = None,
     platforms: list[str] | None = None,
     force: bool = False,
+    on_progress: Callable[[str, str], None] | None = None,
 ) -> dict:
     """Corre transcribe → detect → clips → export. Devuelve el resumen por etapa.
 
     Resume por defecto (salta etapas con artefacto existente); ``force`` rehace todo.
     Lanza PipelineError en la primera etapa que falle (no continúa).
+
+    ``on_progress(stage, state)`` es un callback opcional invocado en cada transición de
+    etapa (state ∈ running/done/skipped/failed). Lo usa el worker asíncrono (CRI-603) para
+    persistir el progreso del job; cuando es None el comportamiento es idéntico al síncrono.
     """
     stages: dict[str, dict] = {}
     completed: list[str] = []
 
+    def notify(name: str, state: str) -> None:
+        if on_progress is not None:
+            on_progress(name, state)
+
     def run(name: str, exists, fn) -> None:
         if not force and exists() is not None:
             stages[name] = {"skipped": True}
+            notify(name, "skipped")
         else:
+            notify(name, "running")
             try:
                 stages[name] = fn()
             except _STAGE_ERRORS as e:
+                notify(name, "failed")
                 raise PipelineError(
                     name, str(e), list(completed), upstream=isinstance(e, _UPSTREAM)
                 ) from e
+            notify(name, "done")
         completed.append(name)
 
     run(

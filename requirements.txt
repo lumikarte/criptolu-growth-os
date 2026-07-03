@@ -4,3 +4,4 @@ uvicorn[standard]>=0.29
 python-multipart>=0.0.9   # FP-MVP-02: subida de archivos
 anthropic>=0.69          # PP-MVP-01: motor de detección 'claude' (opcional, import perezoso)
 Pillow>=11               # CRI-604: render del carrusel a PNG (opcional, import perezoso)
+rq>=2                    # CRI-603: cola de jobs del pipeline asíncrono (arrastra redis-py)
