@@ -51,14 +51,15 @@ def _clamp(v: float, lo: float, hi: float) -> float:
 def _scaled_width(sw: int, sh: int) -> int:
     """Ancho del lienzo tras ``scale=1080:1920:force_original_aspect_ratio=increase``.
 
-    El factor de escala cubre ambos ejes (max) y FFmpeg redondea a par; replicamos eso para
-    que la x que calculamos caiga dentro del frame real que produce FFmpeg.
+    El factor de escala cubre ambos ejes (max). FFmpeg NO fuerza par acá (sin
+    ``force_divisible_by``): usa ``av_rescale`` = round-half-up, así que replicamos con
+    ``round`` crudo para que la x que calculamos caiga dentro del frame real (verificado
+    contra FFmpeg: 1920×1080 → ancho 3413, no 3414).
     """
     if sw <= 0 or sh <= 0:
         return config.CLIP_WIDTH
     factor = max(config.CLIP_WIDTH / sw, config.CLIP_HEIGHT / sh)
-    scaled = int(round(sw * factor))
-    return scaled if scaled % 2 == 0 else scaled + 1
+    return int(round(sw * factor))
 
 
 def _sample_faces(src: Path, start: float, dur: float) -> tuple[list[tuple[float, float]], int, int]:
