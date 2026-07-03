@@ -41,6 +41,13 @@ def atomic_write_text(path: Path, text: str) -> None:
     os.replace(tmp, path)
 
 
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    """Gemelo binario de `atomic_write_text` (tmp + rename), para PNGs y otros binarios."""
+    tmp = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    tmp.write_bytes(data)
+    os.replace(tmp, path)
+
+
 def _ext(filename: str) -> str:
     return Path(filename or "").suffix.lower()
 

@@ -126,6 +126,28 @@ BRAND_VOICE_MAX_CHARS = 8000              # tope defensivo del perfil (cabe de s
 
 # Gate de aprobación humana (W-06, CRI-565): tope del texto de la nota de decisión.
 APPROVAL_NOTE_MAX_CHARS = 1000
+
+# Render del carrusel a PNG (CRI-604). Materializa content.carousel de repurpose.json como
+# slides de imagen con la identidad CriptoLú, listas para subir a IG/LinkedIn. Render propio
+# con Pillow (sin browser headless): liviano, determinista, control total de marca.
+CAROUSEL_WIDTH = 1080
+CAROUSEL_HEIGHT = 1350                    # 4:5 — formato de carrusel recomendado IG/feed
+CAROUSEL_BG_COLOR = "#1A0033"             # mismo morado de marca que CLIP_BG_COLOR
+CAROUSEL_ACCENT_COLOR = "#C026D3"         # mismo magenta CriptoLú que CLIP_WAVE_COLOR
+CAROUSEL_TEXT_COLOR = "#FFFFFF"
+CAROUSEL_MUTED_COLOR = "#B98FD9"          # violeta suave para pie/numeración
+CAROUSEL_MARGIN = 96                      # margen interior en px
+# Fuentes bundleadas en el repo → render determinista, no depende de /usr/share/fonts del
+# deploy. Se cae a la fuente por defecto de PIL si faltaran (con aviso).
+CAROUSEL_FONT_BOLD = str(BASE_DIR / "app" / "assets" / "fonts" / "DejaVuSans-Bold.ttf")
+CAROUSEL_FONT_REG = str(BASE_DIR / "app" / "assets" / "fonts" / "DejaVuSans.ttf")
+CAROUSEL_TITLE_SIZE = 84                  # tamaño inicial del título (se auto-reduce si no entra)
+CAROUSEL_HEADING_SIZE = 64
+CAROUSEL_BODY_SIZE = 44
+CAROUSEL_MIN_FONT_SIZE = 24               # piso del auto-shrink
+# Versión de la plantilla visual. Bump → cambia el fingerprint de la pieza 'carousel' en el
+# gate (W-06), así una aprobación previa caduca (stale) si se retoca el diseño de marca.
+CAROUSEL_TEMPLATE_VERSION = "1.0"
 DEFAULT_BRAND_VOICE = """\
 # Voz de marca — CriptoLú
 

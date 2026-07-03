@@ -87,9 +87,15 @@ def list_pieces(upload_id: str) -> list[dict]:
         }
         for key in _TEXT_PIECES:
             if content.get(key):
+                fp_src = content[key]
+                # El carrusel se publica como IMAGEN (CRI-604): su render depende del texto
+                # Y de la plantilla de marca. Atamos el fingerprint a ambos, así retocar la
+                # plantilla (bump de CAROUSEL_TEMPLATE_VERSION) caduca la aprobación previa.
+                if key == "carousel":
+                    fp_src = {"carousel": content[key], "tv": config.CAROUSEL_TEMPLATE_VERSION}
                 pieces.append({
                     "key": key, "kind": key, "label": str(labels[key]).strip(),
-                    "fingerprint": _fingerprint(content[key]),
+                    "fingerprint": _fingerprint(fp_src),
                 })
         # Los captions por red también son contenido publicable → cada uno es pieza gateada.
         captions = content.get("captions") or {}

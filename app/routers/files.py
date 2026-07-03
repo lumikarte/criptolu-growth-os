@@ -13,14 +13,20 @@ POST /uploads/{id}/export          exportar los clips a carpetas por plataforma 
 GET  /uploads/{id}/export          obtener el índice de exports
 POST /uploads/{id}/repurpose       repropósito multi-formato desde la transcripción (W-03)
 GET  /uploads/{id}/repurpose       obtener el paquete multi-formato
+POST /uploads/{id}/carousel/render renderizar el carrusel a slides PNG de marca (CRI-604)
+GET  /uploads/{id}/carousel        obtener el índice del carrusel renderizado
+GET  /uploads/{id}/carousel/slide_{n}.png   servir una slide PNG
 POST /uploads/{id}/process         orquestar transcribe→detect→clips→export (PP-MVP-05)
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 
+from .. import config
 from ..services import (
+    carousel_render,
     clipping,
     detection,
     export,
@@ -210,6 +216,47 @@ def get_repurpose(upload_id: str) -> dict:
             detail=f"La subida '{upload_id}' todavía no tiene contenido repurposado.",
         )
     return pkg
+
+
+@router.post("/uploads/{upload_id}/carousel/render")
+def render_carousel(upload_id: str) -> dict:
+    """Renderiza el carrusel del repurpose a slides PNG de marca y guarda el índice (CRI-604)."""
+    if storage.load_metadata(upload_id) is None:
+        raise HTTPException(status_code=404, detail=f"Subida '{upload_id}' no encontrada.")
+    try:
+        return carousel_render.render_carousel(upload_id)
+    except carousel_render.UpstreamError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except carousel_render.CarouselError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@router.get("/uploads/{upload_id}/carousel")
+def get_carousel(upload_id: str) -> dict:
+    """Devuelve el índice del carrusel renderizado (carousel.json) de una subida."""
+    if storage.load_metadata(upload_id) is None:
+        raise HTTPException(status_code=404, detail=f"Subida '{upload_id}' no encontrada.")
+    car = carousel_render.load_carousel(upload_id)
+    if car is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"La subida '{upload_id}' todavía no tiene carrusel renderizado.",
+        )
+    return car
+
+
+@router.get("/uploads/{upload_id}/carousel/slide_{index}.png")
+def get_carousel_slide(upload_id: str, index: int) -> FileResponse:
+    """Sirve una slide PNG puntual del carrusel (valida id e índice; anti path traversal)."""
+    if not storage.valid_upload_id(upload_id):
+        raise HTTPException(status_code=404, detail="Subida no encontrada.")
+    if index < 0:
+        raise HTTPException(status_code=404, detail="Índice de slide inválido.")
+    # El nombre se construye desde un entero validado (no del input crudo) → sin traversal.
+    slide = config.CLIPS_DIR / upload_id / "carousel" / f"slide_{index:02d}.png"
+    if not slide.is_file():
+        raise HTTPException(status_code=404, detail="Slide no encontrada.")
+    return FileResponse(slide, media_type="image/png")
 
 
 @router.post("/uploads/{upload_id}/process")
