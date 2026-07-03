@@ -86,16 +86,11 @@ def _create_post(payload: dict) -> str:
 # Orquestación
 # --------------------------------------------------------------------------- #
 
-def _targets(upload_id: str, networks: list[str] | None) -> list[dict]:
+def _targets(upload_id: str, content: dict, networks: list[str] | None) -> list[dict]:
     """Deriva la lista de (pieza × red) publicables de una subida, con el contenido y las
     piezas del gate que cada una requiere. NO consulta aprobación acá (eso lo hace distribute).
+    `content` es el paquete repurposado ya cargado (una sola lectura por distribución).
     """
-    pkg = repurpose.load_repurpose(upload_id)
-    if pkg is None:
-        raise DistributionError(
-            f"La subida '{upload_id}' no tiene contenido repurposado. Generalo primero."
-        )
-    content = pkg.get("content") or {}
     captions = content.get("captions") or {}
     wanted = set(networks) if networks else None
 
@@ -157,8 +152,20 @@ def distribute_upload(
     ptype = post_type or config.DISTRIBUTION_DEFAULT_TYPE
     if ptype != "draft" and not config.DISTRIBUTION_ALLOW_AUTOPOST:
         ptype = "draft"
+    # Con autopost habilitado el type llega del cliente: restringir al allowlist de Postiz
+    # (draft/schedule/now). Sin esto, un type arbitrario viajaría crudo al upstream.
+    if ptype not in config.DISTRIBUTION_TYPES:
+        raise DistributionError(
+            f"type '{ptype}' inválido. Permitidos: {', '.join(config.DISTRIBUTION_TYPES)}."
+        )
 
-    targets = _targets(upload_id, networks)
+    pkg = repurpose.load_repurpose(upload_id)
+    if pkg is None:
+        raise DistributionError(
+            f"La subida '{upload_id}' no tiene contenido repurposado. Generalo primero."
+        )
+    content = pkg.get("content") or {}
+    targets = _targets(upload_id, content, networks)
     results: list[dict] = []
     skipped: list[dict] = []
 
@@ -174,6 +181,11 @@ def distribute_upload(
             skipped.append({"piece_key": t["piece_key"], "network": t["network"],
                             "reason": "sin caption/contenido para esta red"})
             continue
+        # Un clip aprobado sin archivo publicaría un post de video sin video: se salta.
+        if t["kind"] == "video" and not t["media"]:
+            skipped.append({"piece_key": t["piece_key"], "network": t["network"],
+                            "reason": "clip sin archivo de video (media)"})
+            continue
 
         # Recién con el gate pasado tocamos Postiz (subir media si es video).
         image = []
@@ -181,15 +193,17 @@ def distribute_upload(
             image = [{"path": _upload_media(Path(t["media"]))}]
         value = ([{"content": p} for p in t["content"]] if t["kind"] == "thread"
                  else [{"content": t["content"], "image": image}])
-        payload = {"type": ptype, "posts": [{"integration": {"id": t["network"]},
+        # Postiz identifica el canal por el id propio del canal conectado, no por la red.
+        # POSTIZ_INTEGRATIONS mapea red→id (se completa en prod); vacío → placeholder = red.
+        integration_id = config.POSTIZ_INTEGRATIONS.get(t["network"], t["network"])
+        payload = {"type": ptype, "posts": [{"integration": {"id": integration_id},
                                              "value": value}]}
         post_id = _create_post(payload)
         results.append({"piece_key": t["piece_key"], "network": t["network"],
                         "postiz_post_id": post_id, "status": ptype})
 
     note = None
-    if repurpose.load_repurpose(upload_id) and \
-            (repurpose.load_repurpose(upload_id).get("content") or {}).get("carousel"):
+    if content.get("carousel"):
         note = ("El carrusel se distribuye como imagen (usar carousel_render, CRI-604); "
                 "su wiring a Postiz queda para una iteración siguiente.")
 

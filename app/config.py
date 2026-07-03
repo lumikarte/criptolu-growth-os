@@ -124,6 +124,11 @@ POSTIZ_API_KEY = os.environ.get("POSTIZ_API_KEY")
 POSTIZ_TIMEOUT = 60
 DISTRIBUTION_DEFAULT_TYPE = "draft"
 DISTRIBUTION_ALLOW_AUTOPOST = os.environ.get("DISTRIBUTION_ALLOW_AUTOPOST") == "1"
+DISTRIBUTION_TYPES = ("draft", "schedule", "now")  # allowlist de type aceptados por Postiz
+# Mapa red → id del canal conectado en Postiz. La API espera el id propio del canal, no el
+# nombre de la red; en prod se completa (uno por app OAuth conectada). Vacío → usa el nombre
+# de la red como placeholder (sirve para dev/tests; NO publica de verdad hasta completarlo).
+POSTIZ_INTEGRATIONS: dict[str, str] = {}
 # Qué piezas van a qué redes. Para clips, la red se aparea con su caption (caption:<red>),
 # así el clip solo sale a una red si el clip Y su caption de esa red están aprobados.
 DISTRIBUTION_TARGETS = {

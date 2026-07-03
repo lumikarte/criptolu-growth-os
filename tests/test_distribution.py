@@ -107,6 +107,46 @@ def test_autopost_allowed_keeps_type(iso, postiz, monkeypatch):
     assert out["type"] == "now"
 
 
+def test_clip_without_media_is_skipped(iso, postiz, monkeypatch):
+    make_upload()
+    make_clips()
+    _make_repurpose()
+    # un clip aprobado pero sin archivo (media=None) no debe generar un post sin video
+    orig = distribution.clipping.load_clips
+
+    def clips_no_file(uid):
+        data = orig(uid)
+        for c in data["clips"]:
+            c["file"] = None
+        return data
+
+    monkeypatch.setattr(distribution.clipping, "load_clips", clips_no_file)
+    approval.decide(VALID_ID, "clip:1", approval.APPROVED)
+    approval.decide(VALID_ID, "caption:tiktok", approval.APPROVED)
+    out = distribution.distribute_upload(VALID_ID, networks=["tiktok"])
+    assert postiz["posts"] == []
+    assert any(s["piece_key"] == "clip:1" and "media" in s["reason"] for s in out["skipped"])
+
+
+def test_invalid_type_raises(iso, postiz, monkeypatch):
+    make_upload()
+    _make_repurpose()
+    approval.decide(VALID_ID, "feed_post", approval.APPROVED)
+    monkeypatch.setattr(config, "DISTRIBUTION_ALLOW_AUTOPOST", True)
+    with pytest.raises(distribution.DistributionError):
+        distribution.distribute_upload(VALID_ID, post_type="publish-now-lol",
+                                       networks=["facebook"])
+
+
+def test_integration_id_uses_mapping(iso, postiz, monkeypatch):
+    make_upload()
+    _make_repurpose()
+    approval.decide(VALID_ID, "feed_post", approval.APPROVED)
+    monkeypatch.setattr(config, "POSTIZ_INTEGRATIONS", {"facebook": "chan_real_123"})
+    distribution.distribute_upload(VALID_ID, networks=["facebook"])
+    assert postiz["posts"][0]["posts"][0]["integration"]["id"] == "chan_real_123"
+
+
 def test_thread_published_as_array(iso, postiz):
     make_upload()
     _make_repurpose()
