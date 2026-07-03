@@ -103,6 +103,19 @@ GROQ_LLM_MODEL = "llama-3.3-70b-versatile"
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 CLAUDE_MODEL = "claude-opus-4-8"
 
+# Diarización — quién habla (W-02, CRI-561). Groq transcribe (word-level) pero no diariza;
+# esta capa enriquece transcript.json con un speaker por segmento/word. Motor enchufable:
+#  - 'assemblyai' (default): cloud vía urllib, sin GPU ni token HF (re-transcribe y se usa
+#    solo el speaker+tiempo, mapeado por solapamiento sobre los words de Groq).
+#  - 'pyannote' (opcional): local, requiere torch + token HF + modelo gated (import perezoso).
+DIARIZE_DEFAULT_ENGINE = "assemblyai"
+ASSEMBLYAI_API_KEY = os.environ.get("ASSEMBLYAI_API_KEY")
+ASSEMBLYAI_BASE_URL = "https://api.assemblyai.com/v2"
+ASSEMBLYAI_POLL_INTERVAL = 3             # s entre polls del estado de la transcripción
+ASSEMBLYAI_MAX_POLLS = 200               # tope de polls (~10 min) antes de rendirse
+HF_TOKEN = os.environ.get("HF_TOKEN")    # solo para el engine 'pyannote'
+PYANNOTE_MODEL = "pyannote/speaker-diarization-community-1"
+
 # Repropósito multi-formato (W-03, CRI-562). El DIFERENCIAL: de 1 misma transcripción el
 # LLM genera varios formatos de texto además de los clips — carrusel (slides), post de
 # feed, hilo (X/Threads) y un caption por red. Motor enchufable igual que la detección

@@ -42,6 +42,7 @@ uvicorn app.main:app --reload
 | GET | `/uploads/{id}` | Metadata de una subida |
 | POST | `/uploads/{id}/transcribe` | Transcribe con Groq (`?language=es`) |
 | GET | `/uploads/{id}/transcript` | Devuelve la transcripción (json) |
+| POST | `/uploads/{id}/diarize` | Etiqueta quién habla; enriquece el transcript (`?engine=assemblyai\|pyannote`) |
 | POST | `/uploads/{id}/detect` | Detecta mejores momentos (`?engine=groq\|claude&n_clips=5`) |
 | GET | `/uploads/{id}/moments` | Devuelve los momentos detectados (json) |
 | POST | `/uploads/{id}/clips` | Corta los momentos en clips verticales 9:16 con FFmpeg, con subtítulos quemados (`?subtitles=true\|false`) |

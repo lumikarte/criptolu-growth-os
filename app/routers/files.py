@@ -29,6 +29,7 @@ from ..services import (
     carousel_render,
     clipping,
     detection,
+    diarization,
     export,
     jobs,
     repurpose,
@@ -91,6 +92,23 @@ def get_transcript(upload_id: str) -> dict:
             detail=f"La subida '{upload_id}' todavía no fue transcrita.",
         )
     return transcript
+
+
+@router.post("/uploads/{upload_id}/diarize")
+def diarize_upload(upload_id: str, engine: str | None = None) -> dict:
+    """Etiqueta quién habla y enriquece transcript.json con speakers (W-02, CRI-561).
+
+    Requiere transcripción previa. `engine` opcional ('assemblyai' por defecto — necesita
+    ASSEMBLYAI_API_KEY; 'pyannote' local requiere torch + HF_TOKEN).
+    """
+    if storage.load_metadata(upload_id) is None:
+        raise HTTPException(status_code=404, detail=f"Subida '{upload_id}' no encontrada.")
+    try:
+        return diarization.diarize_upload(upload_id, engine=engine)
+    except diarization.UpstreamError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except diarization.DiarizeError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @router.post("/uploads/{upload_id}/detect")
