@@ -77,6 +77,18 @@ CLIP_PRESET = "veryfast"                 # x264: balance velocidad/calidad para 
 CLIP_WAVE_COLOR = "0xC026D3"             # magenta CriptoLú para el waveform de audios
 CLIP_BG_COLOR = "0x1A0033"               # morado profundo de fondo del waveform
 
+# Auto-crop 9:16 face-tracked (CRI-128). El crop actual toma la franja CENTRAL; con esto la
+# x del crop se calcula sobre la cara detectada (YuNet/OpenCV, ONNX ~345 KB, sin torch/GPU).
+# APAGADO por default: es la primera dep binaria y opcional (import perezoso). Ante cualquier
+# fallo (sin OpenCV, sin cara, timeout) se cae al crop central de siempre (face_tracked=false).
+AUTOCROP_ENABLED = os.environ.get("AUTOCROP_ENABLED") == "1"
+AUTOCROP_MODEL = str(BASE_DIR / "app" / "models" / "face_detection_yunet_2023mar.onnx")
+AUTOCROP_SAMPLE_FPS = 3.0                 # cuántos frames/s muestrear para detectar caras
+AUTOCROP_MIN_SCORE = 0.6                  # confianza mínima YuNet para aceptar una cara
+AUTOCROP_SMOOTH_ALPHA = 0.25              # EMA del paneo (0=congelado, 1=sigue crudo)
+AUTOCROP_DEADZONE = 0.06                  # fracción de ancho: no mover si el centro varía menos
+AUTOCROP_MODE = "smooth"                  # "static" (una x por clip) | "smooth" (paneo sendcmd)
+
 # Subtítulos quemados en los clips (PP-MVP-04, CRI-498). SRT + force_style vía libass.
 # El texto va SIEMPRE en el archivo SRT (nunca inline en el filtro) → sin superficie de
 # inyección al filtergraph. Las líneas se re-chunkean desde los word-timestamps para que

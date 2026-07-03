@@ -85,6 +85,12 @@ uvicorn app.main:app --reload
 > exige (400 si falta), `?subtitles=false` los desactiva. El texto va siempre en un `.srt`
 > temporal (nunca inline en el filtro).
 >
+> **Auto-crop 9:16 face-tracked (CRI-128, opcional):** con `AUTOCROP_ENABLED=1` el recorte
+> vertical sigue la cara del hablante (YuNet/OpenCV) en vez de tomar la franja central —
+> modo `static` (una x por clip) o `smooth` (paneo suavizado vía `sendcmd`). Requiere
+> `opencv-python-headless` + el modelo en `app/models/` (ver su README). Ante cualquier fallo
+> (sin OpenCV/modelo, sin cara) cae al crop central; `clips.json` marca `face_tracked`.
+>
 > El export (PP-MVP-03) copia los clips a `data/exports/{shorts,reels,tiktok}/` con nombre
 > `<idcorto>_<rank>_<slug-título>.mp4` (slug ASCII saneado). Es idempotente: al re-exportar
 > limpia solo los archivos de ese upload. Índice en `data/clips/<id>/export.json`.

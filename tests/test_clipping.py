@@ -152,3 +152,82 @@ def test_run_timeout_maps_upstream(monkeypatch):
 def test_load_clips_invalid_id_returns_none(iso):
     assert clipping.load_clips("../etc/passwd") is None
     assert clipping.load_clips(VALID_ID) is None  # todavía no hay clips.json
+
+
+# --------------------------------------------------------------------------- #
+# Auto-crop face-tracked (CRI-128) — framing.plan_crop mockeado
+# --------------------------------------------------------------------------- #
+
+from app.services import framing  # noqa: E402
+
+
+def test_autocrop_off_uses_central_crop(iso, monkeypatch, fake_ffmpeg):
+    make_upload(ext=".mp4")
+    make_moments()
+    _probe(monkeypatch, video=True, audio=True)
+    monkeypatch.setattr(config, "AUTOCROP_ENABLED", False)
+    clipping.cut_clips(VALID_ID, subtitles=False)
+    # crop central de siempre, sin x extra; face_tracked=false en el índice
+    joined = [" ".join(c) for c in fake_ffmpeg]
+    assert any("crop=1080:1920," in j for j in joined)
+    assert not any("crop=1080:1920:" in j or "crop@cam" in j for j in joined)
+    out = clipping.load_clips(VALID_ID)
+    assert all(clip["face_tracked"] is False for clip in out["clips"])
+
+
+def test_autocrop_static_sets_crop_x(iso, monkeypatch, fake_ffmpeg):
+    make_upload(ext=".mp4")
+    make_moments()
+    _probe(monkeypatch, video=True, audio=True)
+    monkeypatch.setattr(config, "AUTOCROP_ENABLED", True)
+    plan = framing.CropPlan(mode="static", scaled_w=3414, x=1500)
+    monkeypatch.setattr(clipping.framing, "plan_crop", lambda src, s, d: plan)
+    clipping.cut_clips(VALID_ID, subtitles=False)
+    # el filtro lleva la x face-centered
+    assert any("crop=1080:1920:1500:(ih-oh)/2" in " ".join(c) for c in fake_ffmpeg)
+    out = clipping.load_clips(VALID_ID)
+    assert all(clip["face_tracked"] is True for clip in out["clips"])
+
+
+def test_autocrop_smooth_writes_sendcmd_and_cleans(iso, monkeypatch):
+    make_upload(ext=".mp4")
+    make_moments()
+    _probe(monkeypatch, video=True, audio=True)
+    monkeypatch.setattr(config, "AUTOCROP_ENABLED", True)
+    plan = framing.CropPlan(mode="smooth", scaled_w=3414,
+                            keyframes=[(0.0, 100), (1.0, 200)], x_init=100)
+    monkeypatch.setattr(clipping.framing, "plan_crop", lambda src, s, d: plan)
+
+    seen_paths: list[str] = []
+
+    def _fake_run(cmd, *, timeout=None):
+        joined = " ".join(cmd)
+        assert "sendcmd=f=" in joined and "crop@cam=1080:1920:100" in joined
+        # el archivo sendcmd existe MIENTRAS corre ffmpeg
+        for tok in cmd:
+            if "cam_" in tok and ".cmd" in tok:
+                pass
+        for p in config.TMP_DIR.glob("cam_*.cmd"):
+            seen_paths.append(str(p))
+            assert p.is_file()
+        Path(cmd[-1]).write_bytes(b"fake")
+        return ""
+
+    monkeypatch.setattr(clipping, "_run", _fake_run)
+    clipping.cut_clips(VALID_ID, subtitles=False)
+    assert seen_paths  # se escribió al menos un sendcmd
+    # y se limpió tras renderizar (finally)
+    assert list(config.TMP_DIR.glob("cam_*.cmd")) == []
+
+
+def test_autocrop_only_video_mode(iso, monkeypatch, fake_ffmpeg):
+    # source solo-audio: aunque el flag esté on, no se llama a plan_crop (no hay caras)
+    make_upload(ext=".mp3")
+    make_moments()
+    _probe(monkeypatch, video=False, audio=True)
+    monkeypatch.setattr(config, "AUTOCROP_ENABLED", True)
+    called = {"n": 0}
+    monkeypatch.setattr(clipping.framing, "plan_crop",
+                        lambda *a, **k: called.__setitem__("n", called["n"] + 1))
+    clipping.cut_clips(VALID_ID, subtitles=False)
+    assert called["n"] == 0

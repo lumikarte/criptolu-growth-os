@@ -22,7 +22,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from .. import config
-from . import detection, storage, transcription
+from . import detection, framing, storage, transcription
 
 
 class ClipError(RuntimeError):
@@ -91,16 +91,42 @@ def _subtitles_filter(srt: Path) -> str:
     return f"subtitles='{_escape_sub_path(srt)}':force_style='{style}'"
 
 
-def _video_cmd(src: Path, start: float, dur: float, out: Path, srt: Path | None = None) -> list[str]:
+def _crop_segment(
+    plan: "framing.CropPlan | None", sendcmd_path: Path | None
+) -> str:
+    """Construye el trozo `crop` del filtro según el plan de auto-crop (CRI-128).
+
+    - Sin plan → `crop=w:h` (franja central de siempre).
+    - static  → `crop=w:h:x:(ih-oh)/2` con la x face-centered fija.
+    - smooth  → `sendcmd=f='<file>',crop@cam=w:h:x_init:(ih-oh)/2`; el sendcmd panea la x.
+
+    La x es un entero calculado y clampeado en `framing` (nunca texto del usuario). La y va
+    centrada por expresión. `sendcmd` se ubica JUSTO antes de `crop@cam` en la cadena.
+    """
+    w, h = config.CLIP_WIDTH, config.CLIP_HEIGHT
+    if plan is None:
+        return f"crop={w}:{h}"
+    if plan.mode == "static":
+        return f"crop={w}:{h}:{int(plan.x or 0)}:(ih-oh)/2"
+    # smooth
+    esc = _escape_sub_path(sendcmd_path) if sendcmd_path is not None else ""
+    return f"sendcmd=f='{esc}',crop@cam={w}:{h}:{int(plan.x_init or 0)}:(ih-oh)/2"
+
+
+def _video_cmd(
+    src: Path, start: float, dur: float, out: Path, srt: Path | None = None,
+    crop_plan: "framing.CropPlan | None" = None, sendcmd_path: Path | None = None,
+) -> list[str]:
     """Recorta [start, start+dur] y reescala/recorta a 9:16 manteniendo el audio.
 
     Si `srt` viene, quema los subtítulos AL FINAL del filtro (sobre los frames 1080×1920,
-    así FontSize/MarginV están en píxeles de salida).
+    así FontSize/MarginV están en píxeles de salida). Si `crop_plan` viene, el recorte sigue
+    la cara (face-tracked) en vez de la franja central (CRI-128).
     """
     w, h = config.CLIP_WIDTH, config.CLIP_HEIGHT
     vf = (
         f"scale={w}:{h}:force_original_aspect_ratio=increase,"
-        f"crop={w}:{h},setsar=1"
+        f"{_crop_segment(crop_plan, sendcmd_path)},setsar=1"
     )
     if srt is not None:
         vf += "," + _subtitles_filter(srt)
@@ -292,11 +318,32 @@ def cut_clips(upload_id: str, *, subtitles: bool | None = None) -> dict:
                 srt_path.parent.mkdir(parents=True, exist_ok=True)
                 storage.atomic_write_text(srt_path, transcription.to_srt(cues))
                 used_subs = True
+
+        # Auto-crop face-tracked (CRI-128): solo en modo video y con el flag activo. Ante
+        # cualquier fallo, plan_crop devuelve None → crop central de siempre (face_tracked=false).
+        crop_plan = None
+        sendcmd_path: Path | None = None
+        face_tracked = False
+        if mode == "video" and config.AUTOCROP_ENABLED:
+            crop_plan = framing.plan_crop(src, start, dur)
+            if crop_plan is not None:
+                face_tracked = True
+                if crop_plan.mode == "smooth":
+                    sendcmd_path = config.TMP_DIR / f"cam_{uuid4().hex}.cmd"
+                    sendcmd_path.parent.mkdir(parents=True, exist_ok=True)
+                    storage.atomic_write_text(sendcmd_path, framing.build_sendcmd(crop_plan))
+
         try:
-            _run(build(src, start, dur, out, srt_path), timeout=config.FFMPEG_TIMEOUT)
+            if mode == "video":
+                cmd = _video_cmd(src, start, dur, out, srt_path, crop_plan, sendcmd_path)
+            else:
+                cmd = build(src, start, dur, out, srt_path)
+            _run(cmd, timeout=config.FFMPEG_TIMEOUT)
         finally:
             if srt_path is not None:
                 srt_path.unlink(missing_ok=True)
+            if sendcmd_path is not None:
+                sendcmd_path.unlink(missing_ok=True)
 
         rendered.append({
             "id": cid,
@@ -308,6 +355,7 @@ def cut_clips(upload_id: str, *, subtitles: bool | None = None) -> dict:
             "score": c.get("score"),
             "title": c.get("title", ""),
             "subtitles": used_subs,
+            "face_tracked": face_tracked,
         })
 
     if not rendered:
