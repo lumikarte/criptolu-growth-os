@@ -151,6 +151,8 @@ def render_carousel(upload_id: str) -> dict:
     Devuelve {upload_id, template_version, width, height, n_slides, title, slides:[...]}.
     Lanza CarouselError si no hay repurpose (400); UpstreamError si falta Pillow (502).
     """
+    if not storage.valid_upload_id(upload_id):
+        raise CarouselError(f"upload_id inválido: '{upload_id}'.")
     pkg = repurpose.load_repurpose(upload_id)
     if pkg is None:
         raise CarouselError(
@@ -171,28 +173,32 @@ def render_carousel(upload_id: str) -> dict:
         ) from e
 
     out_dir = config.CLIPS_DIR / upload_id / "carousel"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    # Limpiar PNGs viejos: si el nuevo carrusel tiene menos slides, no dejar sobrantes.
-    for old in out_dir.glob("slide_*.png"):
-        old.unlink()
-
     total = len(slides) + 1  # +1 por la portada
-    index = []
 
-    cover_png = _render_slide(kind="cover", index=0, total=total, heading=title, body="")
+    # Renderizar TODO en memoria antes de tocar el disco: si una slide falla, no dejamos
+    # PNGs borrados ni un carousel.json colgando (índice inconsistente). Recién con todas
+    # las slides listas, limpiamos las viejas y escribimos las nuevas + el índice.
+    rendered: list[tuple[str, bytes, dict]] = []
     cover_name = "slide_00.png"
-    storage.atomic_write_bytes(out_dir / cover_name, cover_png)
-    index.append({"index": 0, "filename": cover_name, "file": str(out_dir / cover_name),
-                  "kind": "cover", "heading": title, "body": ""})
-
+    cover_png = _render_slide(kind="cover", index=0, total=total, heading=title, body="")
+    rendered.append((cover_name, cover_png,
+                     {"index": 0, "filename": cover_name, "file": str(out_dir / cover_name),
+                      "kind": "cover", "heading": title, "body": ""}))
     for i, s in enumerate(slides, start=1):
         heading = (s.get("heading") or "").strip()
         body = (s.get("body") or "").strip()
         png = _render_slide(kind="slide", index=i, total=total, heading=heading, body=body)
         name = f"slide_{i:02d}.png"
+        rendered.append((name, png,
+                         {"index": i, "filename": name, "file": str(out_dir / name),
+                          "kind": "slide", "heading": heading, "body": body}))
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for old in out_dir.glob("slide_*.png"):  # limpiar sobrantes si ahora hay menos slides
+        old.unlink()
+    for name, png, _ in rendered:
         storage.atomic_write_bytes(out_dir / name, png)
-        index.append({"index": i, "filename": name, "file": str(out_dir / name),
-                      "kind": "slide", "heading": heading, "body": body})
+    index = [entry for _, _, entry in rendered]
 
     payload = {
         "upload_id": upload_id,
