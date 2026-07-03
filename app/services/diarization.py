@@ -112,6 +112,9 @@ def _prepare_audio(upload_id: str) -> Path:
     try:
         transcription._downsample_16k(src, out)
     except transcription.UpstreamError as e:
+        # ffmpeg puede dejar un .ogg parcial; si falla, el engine nunca recibe el path para
+        # limpiarlo en su finally → lo borramos acá para no filtrar temporales.
+        out.unlink(missing_ok=True)
         raise UpstreamError(str(e)) from e
     return out
 

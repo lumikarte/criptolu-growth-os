@@ -136,6 +136,21 @@ def test_diarize_no_turns_maps_upstream(iso, monkeypatch):
 # Endpoint
 # --------------------------------------------------------------------------- #
 
+def test_prepare_audio_cleans_temp_on_downsample_failure(iso, monkeypatch):
+    from app.services import transcription
+    make_upload()
+
+    def fail_downsample(src, dst):
+        dst.write_bytes(b"partial")            # ffmpeg dejó un .ogg a medias
+        raise transcription.UpstreamError("ffmpeg reventó")
+
+    monkeypatch.setattr(transcription, "_downsample_16k", fail_downsample)
+    with pytest.raises(diarization.UpstreamError):
+        diarization._prepare_audio(VALID_ID)
+    # no debe quedar ningún temporal diar16k_* colgando
+    assert list(config.TMP_DIR.glob("diar16k_*")) == []
+
+
 def test_post_diarize_unknown_upload_404(iso, client):
     r = client.post(f"/uploads/{VALID_ID}/diarize")
     assert r.status_code == 404
