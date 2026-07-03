@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from . import config
-from .routers import approvals, brand, files, health, jobs, metrics
+from .routers import approvals, brand, distribution, files, health, jobs, metrics
 
 
 @asynccontextmanager
@@ -33,3 +33,4 @@ app.include_router(brand.router)
 app.include_router(approvals.router)
 app.include_router(metrics.router)
 app.include_router(jobs.router)
+app.include_router(distribution.router)

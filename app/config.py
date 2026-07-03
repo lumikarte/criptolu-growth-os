@@ -116,6 +116,22 @@ ASSEMBLYAI_MAX_POLLS = 200               # tope de polls (~10 min) antes de rend
 HF_TOKEN = os.environ.get("HF_TOKEN")    # solo para el engine 'pyannote'
 PYANNOTE_MODEL = "pyannote/speaker-diarization-community-1"
 
+# Distribución multi-red (W-05, CRI-564). Publica en Postiz self-host SOLO las piezas que
+# pasan el gate de aprobación (W-06), en modo BORRADOR. El gate vive en editorpro; Postiz es
+# un "dumb sink". Auto-post directo (schedule/now) = fase 2, detrás de un flag apagado.
+POSTIZ_BASE_URL = os.environ.get("POSTIZ_BASE_URL", "http://localhost:4007/public/v1")
+POSTIZ_API_KEY = os.environ.get("POSTIZ_API_KEY")
+POSTIZ_TIMEOUT = 60
+DISTRIBUTION_DEFAULT_TYPE = "draft"
+DISTRIBUTION_ALLOW_AUTOPOST = os.environ.get("DISTRIBUTION_ALLOW_AUTOPOST") == "1"
+# Qué piezas van a qué redes. Para clips, la red se aparea con su caption (caption:<red>),
+# así el clip solo sale a una red si el clip Y su caption de esa red están aprobados.
+DISTRIBUTION_TARGETS = {
+    "clip": ("tiktok", "reels", "shorts"),
+    "feed_post": ("instagram_feed", "facebook", "linkedin"),
+    "thread": ("x", "threads"),
+}
+
 # Repropósito multi-formato (W-03, CRI-562). El DIFERENCIAL: de 1 misma transcripción el
 # LLM genera varios formatos de texto además de los clips — carrusel (slides), post de
 # feed, hilo (X/Threads) y un caption por red. Motor enchufable igual que la detección

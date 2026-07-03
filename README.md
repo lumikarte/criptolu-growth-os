@@ -61,6 +61,8 @@ uvicorn app.main:app --reload
 | GET | `/brief` | Daily Brief: agrega los episodios (`?date=YYYY-MM-DD`) |
 | POST | `/uploads/{id}/process` | **Encola** el pipeline y devuelve **202** con `job_id` (async; `?force=true` rehace) |
 | GET | `/jobs/{id}` | Estado y progreso por etapa de un job encolado |
+| POST | `/uploads/{id}/distribute` | Publica en Postiz las piezas **aprobadas** (modo borrador; `?networks=`) |
+| GET | `/uploads/{id}/distribution` | Índice de la última distribución |
 
 > La transcripción usa **Groq** (whisper-large-v3). Requiere `GROQ_API_KEY` en `.env`
 > (ver `.env.example`). Antes de subir, **FFmpeg downsamplea el audio a 16 kHz mono Opus**
