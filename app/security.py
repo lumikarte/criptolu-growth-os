@@ -1,27 +1,24 @@
-"""Autenticación de la API vía API key compartida (Authorization: Bearer <key>)."""
+"""Autenticación de la API vía API key compartida (Authorization: Bearer <key>).
+
+Enforced por middleware en app.main (protege TODO por default; ver _OPEN_PATHS ahí), no
+por dependency de router — así un router nuevo agregado a futuro queda protegido sin que
+haga falta acordarse de listarlo. Hardening tras auditoría Codex 2026-07-14 sobre el
+commit f652e59: el diseño anterior (opt-in por router) dejaba /docs y /openapi.json
+afuera sin que nadie lo notara.
+"""
 
 from __future__ import annotations
 
 import secrets
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-
 from . import config
 
-_bearer = HTTPBearer(auto_error=False)
 
-
-def require_api_key(
-    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
-) -> None:
-    """Dependency de FastAPI: exige Authorization: Bearer <PODCASTPRO_API_KEY>."""
-    if not config.PODCASTPRO_API_KEY:
-        raise HTTPException(
-            status.HTTP_500_INTERNAL_SERVER_ERROR,
-            "PODCASTPRO_API_KEY no configurada (ver .env.example).",
-        )
-    if credentials is None or not secrets.compare_digest(
-        credentials.credentials, config.PODCASTPRO_API_KEY
-    ):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "API key inválida o ausente.")
+def is_valid_bearer(authorization: str | None) -> bool:
+    """True si el header Authorization trae "Bearer <PODCASTPRO_API_KEY>" correcto."""
+    if not config.PODCASTPRO_API_KEY or not authorization:
+        return False
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer":
+        return False
+    return secrets.compare_digest(token, config.PODCASTPRO_API_KEY)
