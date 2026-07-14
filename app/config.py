@@ -29,6 +29,14 @@ def _load_dotenv() -> None:
 
 _load_dotenv()
 
+# Autenticación de la API (todas las rutas salvo / y /health). Header esperado:
+# "Authorization: Bearer <PODCASTPRO_API_KEY>". Sin esta key configurada, el servicio
+# rechaza todo en vez de arrancar abierto (fail-closed) — hallazgo de auditoría Codex
+# 2026-07-14: sin auth, cualquiera en la red podía falsificar el gate de aprobación
+# humana (W-06, approvals) y disparar /distribute generando borradores reales en Postiz
+# sin que un humano interviniera.
+PODCASTPRO_API_KEY = os.environ.get("PODCASTPRO_API_KEY")
+
 # Carpetas del pipeline (cada etapa escribe en la suya).
 UPLOADS_DIR = DATA_DIR / "uploads"          # FP-MVP-02: archivos subidos
 TRANSCRIPTS_DIR = DATA_DIR / "transcripts"  # FP-MVP-03: transcripciones

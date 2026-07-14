@@ -17,7 +17,7 @@ from app import config  # noqa: E402
 from app.main import app  # noqa: E402
 from app.services import approval, carousel_render, storage  # noqa: E402
 
-from .conftest import VALID_ID, make_upload  # noqa: E402
+from .conftest import AUTH_HEADERS, VALID_ID, make_upload  # noqa: E402
 from .test_repurpose import _valid_package  # noqa: E402
 
 
@@ -33,7 +33,7 @@ def _make_repurpose(upload_id: str = VALID_ID, carousel: dict | None = None) -> 
 
 @pytest.fixture
 def client():
-    with TestClient(app) as c:
+    with TestClient(app, headers=AUTH_HEADERS) as c:
         yield c
 
 

@@ -12,7 +12,7 @@ from app import config
 from app.main import app
 from app.services import approval, distribution, storage
 
-from .conftest import VALID_ID, make_clips, make_upload
+from .conftest import AUTH_HEADERS, VALID_ID, make_clips, make_upload
 from .test_repurpose import _valid_package
 
 
@@ -25,7 +25,7 @@ def _make_repurpose(upload_id: str = VALID_ID) -> None:
 
 @pytest.fixture
 def client():
-    with TestClient(app) as c:
+    with TestClient(app, headers=AUTH_HEADERS) as c:
         yield c
 
 

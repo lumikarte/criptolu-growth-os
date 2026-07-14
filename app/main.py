@@ -9,10 +9,11 @@ from __future__ import annotations
 import tempfile
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 
 from . import config
 from .routers import approvals, brand, distribution, files, health, jobs, metrics
+from .security import require_api_key
 
 
 @asynccontextmanager
@@ -27,10 +28,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=config.APP_NAME, version=config.APP_VERSION, lifespan=lifespan)
-app.include_router(health.router)
-app.include_router(files.router)
-app.include_router(brand.router)
-app.include_router(approvals.router)
-app.include_router(metrics.router)
-app.include_router(jobs.router)
-app.include_router(distribution.router)
+app.include_router(health.router)  # sin auth: healthcheck de monitoreo/deploy
+_auth = [Depends(require_api_key)]
+app.include_router(files.router, dependencies=_auth)
+app.include_router(brand.router, dependencies=_auth)
+app.include_router(approvals.router, dependencies=_auth)
+app.include_router(metrics.router, dependencies=_auth)
+app.include_router(jobs.router, dependencies=_auth)
+app.include_router(distribution.router, dependencies=_auth)

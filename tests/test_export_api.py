@@ -8,12 +8,12 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.services import export
 
-from .conftest import VALID_ID, make_clips, make_upload
+from .conftest import AUTH_HEADERS, VALID_ID, make_clips, make_upload
 
 
 @pytest.fixture
 def client():
-    with TestClient(app) as c:
+    with TestClient(app, headers=AUTH_HEADERS) as c:
         yield c
 
 

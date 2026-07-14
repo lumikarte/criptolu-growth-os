@@ -12,12 +12,12 @@ from app import config
 from app.main import app
 from app.services import diarization
 
-from .conftest import VALID_ID, make_transcript, make_upload
+from .conftest import AUTH_HEADERS, VALID_ID, make_transcript, make_upload
 
 
 @pytest.fixture
 def client():
-    with TestClient(app) as c:
+    with TestClient(app, headers=AUTH_HEADERS) as c:
         yield c
 
 

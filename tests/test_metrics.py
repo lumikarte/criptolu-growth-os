@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.services import approval, metrics
 
-from .conftest import VALID_ID, make_clips, make_upload
+from .conftest import AUTH_HEADERS, VALID_ID, make_clips, make_upload
 
 # Un segundo upload id válido (hex de 32) para probar la agregación del brief.
 OTHER_ID = "b1c2d3e4f5061728394a5b6c7d8e9f00"
@@ -16,7 +16,7 @@ OTHER_ID = "b1c2d3e4f5061728394a5b6c7d8e9f00"
 
 @pytest.fixture
 def client():
-    with TestClient(app) as c:
+    with TestClient(app, headers=AUTH_HEADERS) as c:
         yield c
 
 

@@ -8,6 +8,13 @@ de ejecución, así que monkeypatchearlas redirige todo el almacenamiento a un t
 from __future__ import annotations
 
 import json
+import os
+
+# Seteado ANTES de importar app.config (que carga .env con setdefault y no la pisaría):
+# fija la API key para que los tests puedan autenticar contra app.main sin depender del
+# .env real de la máquina.
+os.environ["PODCASTPRO_API_KEY"] = "test-key-for-pytest"
+
 from pathlib import Path
 
 import pytest
@@ -17,6 +24,9 @@ from app.services import storage
 
 # Un upload_id válido es hex de 32 chars (ver storage.valid_upload_id).
 VALID_ID = "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
+
+# Header de auth listo para pasarle a TestClient(app, headers=AUTH_HEADERS).
+AUTH_HEADERS = {"Authorization": f"Bearer {config.PODCASTPRO_API_KEY}"}
 
 
 @pytest.fixture

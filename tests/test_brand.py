@@ -9,13 +9,13 @@ from app import config
 from app.main import app
 from app.services import brand, repurpose
 
-from .conftest import VALID_ID, make_transcript, make_upload
+from .conftest import AUTH_HEADERS, VALID_ID, make_transcript, make_upload
 from .test_repurpose import _valid_package
 
 
 @pytest.fixture
 def client():
-    with TestClient(app) as c:
+    with TestClient(app, headers=AUTH_HEADERS) as c:
         yield c
 
 
